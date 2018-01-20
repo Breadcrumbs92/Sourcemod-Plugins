@@ -20,8 +20,6 @@ ConVar cv_do_supernovas;
 
 public void OnPluginStart()
 {
-	PrintToServer("Spite plugin has initialized.");
-	
 	//Create events hooks for prop breaking, entity dying, player dying, and func_breakable breaking.
 	HookEvent("break_prop", Event_PropKilled);
 	HookEvent("entity_killed", Event_EntKilled);
@@ -44,7 +42,7 @@ public void OnPluginStart()
 	FCVAR_NOTIFY, 
 	true, 
 	0.0, // Min value
-	true, 
+	true,
 	100.0); // Max value
 	
 	cv_do_supernovas = CreateConVar("spite_do_supernovas", 
@@ -52,6 +50,31 @@ public void OnPluginStart()
 	"Whether or not to cause supernovas on entity deaths.", 
 	FCVAR_NOTIFY); 
 }
+
+
+public Action OnClientCommand(int client, int args)
+{
+	char string_command[32];
+	GetCmdArg(0, string_command, 32);
+	
+	if(StrEqual(string_command, "spite_make_immune"))
+	{
+		int i_target = GetClientAimTarget(client, false);
+		char string_ent_classname[64];
+		GetEntityClassname(i_target, string_ent_classname, 64);
+		
+		if(!StrEqual(string_ent_classname, "player", true))
+		{
+			SetVariantString("fdt_vortimmune");
+			AcceptEntityInput(i_target, "SetDamageFilter");
+			
+			PrintToConsole(client, "Made a(n) %s with ID %i immune", string_ent_classname, i_target);
+		}
+		return Plugin_Handled;
+	}
+	return Plugin_Continue;
+}
+
 
 public void OnMapStart()
 {
@@ -138,7 +161,7 @@ static void f_MakeExplosives(int i_entity_index, int i_explosives_low_bound, int
 	//3 if it came from a func_breakable.
 	
 	//If the destroyed thing was an enemy, a couple special things have to happen
-	if(i_origin_hook == 1 && bl_entity_is_player == false)
+	if(i_origin_hook == 1 && !bl_entity_is_player)
 	{
 		//Add 16 hammer units to the entity's vertical position, 
 		//so our explosives aren't spawned in the ground
@@ -185,7 +208,7 @@ static void f_MakeExplosives(int i_entity_index, int i_explosives_low_bound, int
 		string_explosive_classname = "npc_grenade_frag";
 	}
 		
-	if(i_origin_hook == 2 && bl_entity_is_player == true)
+	if(i_origin_hook == 2 && bl_entity_is_player)
 	{
 		vec_entity_origin_vector[2] = vec_entity_origin_vector[2] + 16.0;
 	}
@@ -268,9 +291,6 @@ public Action f_BounceExplosives(Handle timer02, any entityindex)
 	{
 		return Plugin_Stop;
 	}
-	
-	char string_entity_bounced_classname[64] = " ";
-	GetEntityClassname(entityindex, string_entity_bounced_classname, 64);
 
 	float vec_random_velocity_vector[3] = {0.0, 0.0, 0.0};
 	vec_random_velocity_vector[0] = GetRandomFloat(-700.0, 700.0);
@@ -287,7 +307,7 @@ public Action f_BounceExplosives(Handle timer02, any entityindex)
 public Action f_FindEnemies(Handle timer03)
 {
 	// Entities in this string will become immune to explosives
-	char string_immune_ents[1024] = "npc_metropolice npc_combine_s npc_antlion npc_zombie npc_poisonzombie npc_fastzombie npc_headcrab npc_headcrab_black npc_headcrab_fast npc_manhack npc_rollermine npc_barnacle npc_alyx npc_monk npc_zombine npc_hunter";
+	char string_immune_ents[1024] = "npc_metropolice npc_combine_s npc_antlion npc_zombie npc_poisonzombie npc_fastzombie npc_headcrab npc_headcrab_black npc_headcrab_fast npc_manhack npc_rollermine npc_barnacle npc_alyx npc_monk npc_zombine npc_hunter npc_citizen";
 	
 	// Entites in this string will become immune to everything
 	char string_totalimmune_ents[64] = "npc_vortigaunt npc_barney";
@@ -298,13 +318,13 @@ public Action f_FindEnemies(Handle timer03)
 		{
 			char string_ent_classname[64];
 			GetEntityClassname(i_index, string_ent_classname, 64);
+			
 			if(StrContains(string_immune_ents, string_ent_classname, true) != -1)
 			{
 				SetVariantString("fdt_noblastdamage");
 				AcceptEntityInput(i_index, "SetDamageFilter");
 			}
-			
-			if(StrContains(string_totalimmune_ents, string_ent_classname, true) != -1)
+			else if(StrContains(string_totalimmune_ents, string_ent_classname, true) != -1)
 			{
 				SetVariantString("fdt_vortimmune");
 				AcceptEntityInput(i_index, "SetDamageFilter");
@@ -320,7 +340,7 @@ public Action f_FindEnemies(Handle timer03)
 public OnEntityCreated(entity, const String:classname[])
 {	
 	//Any entity in this string will become immune to explosives.
-	char string_enemy_classnames[1024] = "npc_metropolice npc_combine_s npc_fastzombie npc_headcrab npc_headcrab_black npc_headcrab_fast npc_manhack npc_rollermine npc_poisonzombie npc_zombie npc_barnacle npc_antlion npc_monk npc_alyx npc_zombine npc_hunter";
+	char string_enemy_classnames[1024] = "npc_metropolice npc_combine_s npc_fastzombie npc_headcrab npc_headcrab_black npc_headcrab_fast npc_manhack npc_rollermine npc_poisonzombie npc_zombie npc_barnacle npc_antlion npc_monk npc_alyx npc_zombine npc_hunter npc_citizen";
 	
 	//Any entity in this string will become immune to everything
 	char string_totalimmune_classnames[64] = "npc_vortigaunt npc_barney";
