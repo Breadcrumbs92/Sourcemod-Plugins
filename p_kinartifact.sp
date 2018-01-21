@@ -146,11 +146,6 @@ public void f_SpawnDolls(char[] victim_classname, int i_victim)
 	{
 		f_CreateDolls("npc_poisonzombie", vec_victim_origin, vec_victim_angles);
 	}
-	// Manhacks turn into hopper mines
-	else if(StrEqual(victim_classname, "npc_manhack", true))
-	{
-		f_CreateDolls("combine_mine", vec_victim_origin, vec_victim_angles);
-	}
 	// Gunships turn into swarms of manhacks
 	else if(StrEqual(victim_classname, "npc_combinegunship", true))
 	{
@@ -349,11 +344,6 @@ public Action f_CreateBallGuys(Handle timer09, any data)
 	{
 		// Give the rebel an m_Type of 3 so it has the resistance outfit
 		SetEntProp(i_guy, Prop_Data, "m_Type", 3);
-		
-		// Make immune to explosives
-		// Only works if spite is installed
-		SetVariantString("fdt_noblastdamage");
-		AcceptEntityInput(i_guy, "SetDamageFilter");
 	}
 	// Give entity an ar2, then spawn it at the ball's origin
 	DispatchKeyValue(i_guy, "additionalequipment", "weapon_ar2");
