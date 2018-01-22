@@ -17,6 +17,9 @@ public Plugin myinfo =
 int g_weapon[MAXPLAYERS + 1];
 int g_ammo_drained[MAXPLAYERS + 1];
 
+float g_invuln_time[2048];
+bool g_is_ticking[2048];
+
 // Check for double-taps of the use key
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum)
 {
@@ -134,7 +137,7 @@ public void OnEntityDestroyed(int entity)
 			}
 			else if(StrEqual(string_last_weapon, "weapon_357", true) && g_ammo_drained[i_owner] != 0)
 			{			
-				f_MakeEntsImmune(g_ammo_drained[i_owner], vec_bug_origin);
+				f_MakeEntsImmune(g_ammo_drained[i_owner], vec_bug_origin, i_owner);
 			}
 			else if(StrEqual(string_last_weapon, "weapon_smg1", true) && g_ammo_drained[i_owner] != 0)
 			{
@@ -146,7 +149,7 @@ public void OnEntityDestroyed(int entity)
 			}
 			else if(StrEqual(string_last_weapon, "weapon_shotgun", true) && g_ammo_drained[i_owner] != 0)
 			{
-				f_Decimate(g_ammo_drained[i_owner], vec_bug_origin);
+				f_Decimate(g_ammo_drained[i_owner], vec_bug_origin, i_owner);
 			}
 		}
 	}
@@ -310,7 +313,7 @@ public void f_BounceExplosives(int i_barrel)
 }
 
 // The magnum's effect is to make things in a radius immune
-public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin)
+public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 {
 	int i_filter = CreateEntityByName("filter_damage_type");
 	DispatchKeyValueFloat(i_filter, "damagetype", 16384.0);
@@ -331,29 +334,58 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin)
 				GetEntPropVector(i, Prop_Send, "m_vecOrigin", vec_origin);
 			
 				float fl_distance = GetVectorDistance(vec_origin, vec_splat_origin, false);
-				if(fl_distance < 25 * i_ammo)
+				if((fl_distance < 25 * i_ammo) || (i == i_thrower))
 				{
+					g_invuln_time[i] += 3.0;
+					
+					if(!g_is_ticking[i])
+					{
+						CreateTimer(0.10, f_TickDownInvuln, i, TIMER_REPEAT);
+					}
+					
 					SetVariantString("fdt_357immune");
 					AcceptEntityInput(i, "SetDamageFilter");
 					
 					float vec_bump[3] = {0.0, 0.0, 100.0};
 					TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, vec_bump);
 				}
-			} 
+			}
 		}
 	}
-	
-	CreateTimer(3.0, f_StopImmunity, i_filter, TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public Action f_StopImmunity(Handle Timer02, int i_filter)
+public Action f_TickDownInvuln(Handle Timer06, int i_entity)
 {
-	AcceptEntityInput(i_filter, "Kill");
+	if(IsValidEntity(i_entity))
+	{
+		g_invuln_time[i_entity] -= 0.10;
+		if(g_invuln_time[i_entity] < 0)
+		{
+			g_invuln_time[i_entity] = 0.0;
+			return Plugin_Stop;
+		}
+		
+		char str_classname[64];
+		GetEntityClassname(i_entity, str_classname, sizeof(str_classname));
+	
+		if(StrEqual(str_classname, "player", true))
+		{
+			SetHudTextParamsEx(-1.0, 0.55, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
+			ShowHudText(i_entity, -1, "IMMUNITY : %f", g_invuln_time[i_entity]);
+		}
+	
+		return Plugin_Continue;
+	}
+	else
+	{
+		return Plugin_Stop;
+	}
 }
+
 
 // The shotgun's function is to set everything in a 
 // certain radius's health to 1 for a short amount of time
-public void f_Decimate(int i_ammo, float[3] vec_splat_origin)
+public void f_Decimate(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 {
 	for(int i = 1; i <= GetEntityCount(); i++)
 	{
@@ -371,7 +403,7 @@ public void f_Decimate(int i_ammo, float[3] vec_splat_origin)
 				GetEntPropVector(i, Prop_Send, "m_vecOrigin", vec_origin);
 				
 				float fl_distance = GetVectorDistance(vec_origin, vec_splat_origin, false);
-				if(fl_distance < 25 * i_ammo)
+				if(fl_distance < 25 * i_ammo || i == i_thrower)
 				{
 					int i_curhealth = GetEntProp(i, Prop_Data, "m_iHealth");
 					
@@ -395,7 +427,7 @@ public Action f_RestoreHealth(Handle Timer04, DataPack dp_info)
 	ResetPack(dp_info);
 	int i_entity = ReadPackCell(dp_info);
 	int i_health = ReadPackCell(dp_info);
-	SetEntProp(i_entity, Prop_Data, "m_iHealth", i_health);
+	SetEntProp(i_entity, Prop_Data, "m_iHealth", i_health); 
 }
 
 // Returns amount of ammo drained, or -1 if weapon is invalid
@@ -411,7 +443,7 @@ static int f_DrainAmmo(int i_client, const char[] string_last_weapon)
 	else if(StrEqual(string_last_weapon, "weapon_357", true) == true)
 	{
 		i_ammo_offset = 1832;
-		return f_EmptyClipAndReserve(i_client, i_ammo_offset);
+		return f_EmptyClipAndReserve(i_client, i_ammo_offset, 6);
 	}
 	else if(StrEqual(string_last_weapon, "weapon_smg1", true) == true)
 	{
@@ -426,7 +458,7 @@ static int f_DrainAmmo(int i_client, const char[] string_last_weapon)
 	else if(StrEqual(string_last_weapon, "weapon_shotgun", true) == true)
 	{
 		i_ammo_offset = 1840;
-		return f_EmptyClipAndReserve(i_client, i_ammo_offset);
+		return f_EmptyClipAndReserve(i_client, i_ammo_offset, 12);
 	}
 	else if(StrEqual(string_last_weapon, "weapon_crossbow", true) == true)
 	{
@@ -483,6 +515,25 @@ static int f_EmptyClipAndReserve(int i_client, int i_ammo_offset, int i_max_remo
 
 	return i_removed_ammo;
 }
+
+/*
+public void OnGameFrame()
+{
+	for(int i = 1; i < MAXPLAYERS + 1; i++)
+	{	
+		if(IsValidEntity(i))
+		{
+			char str_classname[64];
+			GetEntityClassname(i, str_classname, sizeof(str_classname));
+		
+			if(StrEqual(str_classname, "player", true))
+			{
+				
+			} 
+		}
+	}
+}
+*/
 
 bool HasEntProp(int entity, PropType type, const char[] prop)
 {
