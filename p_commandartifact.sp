@@ -1,6 +1,8 @@
 #include <sourcemod>
 #include <sdktools>
 #pragma semicolon 1
+
+// Status effects
 #define INVULN 0
 #define DECIMATE 1
 
@@ -19,8 +21,8 @@ public Plugin myinfo =
 int g_weapon[MAXPLAYERS + 1];
 int g_ammo_drained[MAXPLAYERS + 1];
 
-float g_invuln_time[2048][2];
-bool g_invuln_ticking[2048][2];
+float g_status_time[2048][2];
+bool g_status_ticking[2048][2];
 
 
 // Check for double-taps of the use key
@@ -335,9 +337,9 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_throwe
 				float fl_distance = GetVectorDistance(vec_origin, vec_splat_origin, false);
 				if((fl_distance < 25 * i_ammo) || (i == i_thrower))
 				{
-					g_invuln_time[i][INVULN] += 3.0;
+					g_status_time[i][INVULN] += 3.0;
 					
-					if(!g_invuln_ticking[i][INVULN])
+					if(!g_status_ticking[i][INVULN])
 					{
 						int i_filter = CreateEntityByName("filter_damage_type");
 						DispatchKeyValueFloat(i_filter, "damagetype", 16384.0);
@@ -368,21 +370,39 @@ public Action f_TickDown(Handle Timer06, any dp)
 	ResetPack(dp, false);
 	int i_entity = ReadPackCell(dp);
 	int i_mode = ReadPackCell(dp);
+	int i_health;
+	
+	if(i_mode == DECIMATE)
+	{
+		i_health = ReadPackCell(dp);
+	}
 	
 	if(IsValidEntity(i_entity))
 	{
-		g_invuln_ticking[i_entity][i_mode] = true;
-		g_invuln_time[i_entity][i_mode] -= 0.10;
-		if(g_invuln_time[i_entity][i_mode] < 0)
+		g_status_ticking[i_entity][i_mode] = true;
+		g_status_time[i_entity][i_mode] -= 0.10;
+		if(g_status_time[i_entity][i_mode] < 0)
 		{
-			g_invuln_time[i_entity][i_mode] = 0.0;
-			g_invuln_ticking[i_entity][i_mode] = false;
+			g_status_time[i_entity][i_mode] = 0.0;
+			g_status_ticking[i_entity][i_mode] = false;
 			
-			int i_filter = ReadPackCell(dp);
-			AcceptEntityInput(i_filter, "Kill");
+			if(i_mode == INVULN)
+			{
+				int i_filter = ReadPackCell(dp);
+				AcceptEntityInput(i_filter, "Kill");
+			}
+			else if(i_mode == DECIMATE)
+			{
+				SetEntProp(i_entity, Prop_Data, "m_iHealth", i_health); 
+			}
 			
 			CloseHandle(dp);
 			return Plugin_Stop;
+		}
+		
+		if(g_status_time[i_entity][i_mode] > 0 && i_mode == DECIMATE)
+		{
+			SetEntProp(i_entity, Prop_Data, "m_iHealth", 1);
 		}
 		
 		char str_classname[64];
@@ -393,12 +413,12 @@ public Action f_TickDown(Handle Timer06, any dp)
 			if(i_mode == INVULN)
 			{
 				SetHudTextParamsEx(-1.0, 0.55, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
-				ShowHudText(i_entity, -1, "IMMUNITY : %f", g_invuln_time[i_entity][i_mode]);
+				ShowHudText(i_entity, -1, "IMMUNITY : %f", g_status_time[i_entity][i_mode]);
 			}
 			else if(i_mode == DECIMATE)
 			{
 				SetHudTextParamsEx(-1.0, 0.60, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
-				ShowHudText(i_entity, -1, "DECIMATED : %f", g_invuln_time[i_entity][i_mode]);
+				ShowHudText(i_entity, -1, "DECIMATED : %f", g_status_time[i_entity][i_mode]);
 			}
 		}
 	
@@ -406,14 +426,16 @@ public Action f_TickDown(Handle Timer06, any dp)
 	}
 	else
 	{
-		int i_filter = ReadPackCell(dp);
-		AcceptEntityInput(i_filter, "Kill");
+		if(i_mode == INVULN)
+		{
+			int i_filter = ReadPackCell(dp);
+			AcceptEntityInput(i_filter, "Kill");
+		}
 			
 		CloseHandle(dp);
 		return Plugin_Stop;
 	}
 }
-
 
 // The shotgun's function is to set everything in a 
 // certain radius's health to 1 for a short amount of time
@@ -438,16 +460,19 @@ public void f_Decimate(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 				if(fl_distance < 25 * i_ammo || i == i_thrower)
 				{
 					int i_curhealth = GetEntProp(i, Prop_Data, "m_iHealth");
+					g_status_time[i][DECIMATE] += 5.0;
 					
-					DataPack dp_hp = CreateDataPack();
-					ResetPack(dp_hp);
-					WritePackCell(dp_hp, i);
-					WritePackCell(dp_hp, i_curhealth);
-					
-					SetEntProp(i, Prop_Data, "m_iHealth", 1);
-					CreateTimer(5.0, f_RestoreHealth, dp_hp, TIMER_FLAG_NO_MAPCHANGE);
-					
-					PrintToServer("Got a %s", str_classname);
+					if(!g_status_ticking[i][DECIMATE])
+					{
+						DataPack dp_hp = CreateDataPack();
+						ResetPack(dp_hp);
+						WritePackCell(dp_hp, i);
+						WritePackCell(dp_hp, DECIMATE);
+						WritePackCell(dp_hp, i_curhealth);
+							
+						SetEntProp(i, Prop_Data, "m_iHealth", 1);
+						CreateTimer(0.10, f_TickDown, dp_hp, TIMER_REPEAT);
+					}
 				}
 			}
 		}
@@ -547,25 +572,6 @@ static int f_EmptyClipAndReserve(int i_client, int i_ammo_offset, int i_max_remo
 
 	return i_removed_ammo;
 }
-
-/*
-public void OnGameFrame()
-{
-	for(int i = 1; i < MAXPLAYERS + 1; i++)
-	{	
-		if(IsValidEntity(i))
-		{
-			char str_classname[64];
-			GetEntityClassname(i, str_classname, sizeof(str_classname));
-		
-			if(StrEqual(str_classname, "player", true))
-			{
-				
-			} 
-		}
-	}
-}
-*/
 
 bool HasEntProp(int entity, PropType type, const char[] prop)
 {
