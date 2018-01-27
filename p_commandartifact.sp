@@ -415,6 +415,12 @@ public Action f_TickStatusDown(Handle Timer06, any dp)
 				g_status_time[i_entity][i_mode] = 0.0;
 				g_status_ticking[i_entity][i_mode] = false;
 				
+				if(i_mode == INVULN)
+				{
+					int i_filter = ReadPackCell(dp);
+					AcceptEntityInput(i_filter, "Kill");
+				}
+				
 				return Plugin_Stop;
 			}
 			
@@ -464,7 +470,7 @@ public void f_Decimate(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 				GetEntPropVector(i, Prop_Send, "m_vecOrigin", vec_origin);
 				
 				float fl_distance = GetVectorDistance(vec_origin, vec_splat_origin, false);
-				if(fl_distance < 25 * i_ammo || i == i_thrower)
+				if(fl_distance < 50 * i_ammo || i == i_thrower)
 				{
 					int i_curhealth = GetEntProp(i, Prop_Data, "m_iHealth");
 					g_status_time[i][DECIMATE] += 5.0;
