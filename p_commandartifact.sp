@@ -351,7 +351,7 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_throwe
 						WritePackCell(dp_invuln, INVULN);
 						WritePackCell(dp_invuln, i_filter);
 
-						CreateTimer(0.10, f_TickDown, dp_invuln, TIMER_REPEAT);
+						CreateTimer(0.10, f_TickStatusDown, dp_invuln, TIMER_REPEAT);
 					}
 					
 					SetVariantString("fdt_357immune");
@@ -365,7 +365,7 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_throwe
 	}
 }
 
-public Action f_TickDown(Handle Timer06, any dp)
+public Action f_TickStatusDown(Handle Timer06, any dp)
 {
 	ResetPack(dp, false);
 	int i_entity = ReadPackCell(dp);
@@ -410,6 +410,14 @@ public Action f_TickDown(Handle Timer06, any dp)
 	
 		if(StrEqual(str_classname, "player", true))
 		{
+			if(!IsPlayerAlive(i_entity))
+			{
+				g_status_time[i_entity][i_mode] = 0.0;
+				g_status_ticking[i_entity][i_mode] = false;
+				
+				return Plugin_Stop;
+			}
+			
 			if(i_mode == INVULN)
 			{
 				SetHudTextParamsEx(-1.0, 0.55, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
@@ -421,7 +429,6 @@ public Action f_TickDown(Handle Timer06, any dp)
 				ShowHudText(i_entity, -1, "DECIMATED : %f", g_status_time[i_entity][i_mode]);
 			}
 		}
-	
 		return Plugin_Continue;
 	}
 	else
@@ -471,7 +478,7 @@ public void f_Decimate(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 						WritePackCell(dp_hp, i_curhealth);
 							
 						SetEntProp(i, Prop_Data, "m_iHealth", 1);
-						CreateTimer(0.10, f_TickDown, dp_hp, TIMER_REPEAT);
+						CreateTimer(0.10, f_TickStatusDown, dp_hp, TIMER_REPEAT);
 					}
 				}
 			}
