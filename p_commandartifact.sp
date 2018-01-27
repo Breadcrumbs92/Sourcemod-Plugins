@@ -1,6 +1,8 @@
 #include <sourcemod>
 #include <sdktools>
 #pragma semicolon 1
+#define INVULN 0
+#define DECIMATE 1
 
 public Plugin myinfo =
 {
@@ -17,8 +19,9 @@ public Plugin myinfo =
 int g_weapon[MAXPLAYERS + 1];
 int g_ammo_drained[MAXPLAYERS + 1];
 
-float g_invuln_time[2048];
-bool g_is_ticking[2048];
+float g_invuln_time[2048][2];
+bool g_invuln_ticking[2048][2];
+
 
 // Check for double-taps of the use key
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum)
@@ -292,7 +295,7 @@ public Action f_ExplodeRebels(Handle Timer03, int i_guy)
 		float vec_origin[3] = {0.0, 0.0, 0.0};
 		GetEntPropVector(i_guy, Prop_Send, "m_vecOrigin", vec_origin);
 	
-		int i_barrel = CreateEntityByName("prop_physics");
+		int i_barrel = CreateEntityByName("prop_physics"); 
 		DispatchKeyValue(i_barrel, "model", "models/props_c17/oildrum001_explosive.mdl");
 		DispatchSpawn(i_barrel);
 		TeleportEntity(i_barrel, vec_origin, NULL_VECTOR, NULL_VECTOR);
@@ -315,10 +318,6 @@ public void f_BounceExplosives(int i_barrel)
 // The magnum's effect is to make things in a radius immune
 public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_thrower)
 {
-	int i_filter = CreateEntityByName("filter_damage_type");
-	DispatchKeyValueFloat(i_filter, "damagetype", 16384.0);
-	DispatchKeyValue(i_filter, "targetname", "fdt_357immune");
-	
 	for(int i = 1; i <= GetEntityCount(); i++)
 	{
 		if(IsValidEntity(i))
@@ -336,11 +335,21 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_throwe
 				float fl_distance = GetVectorDistance(vec_origin, vec_splat_origin, false);
 				if((fl_distance < 25 * i_ammo) || (i == i_thrower))
 				{
-					g_invuln_time[i] += 3.0;
+					g_invuln_time[i][INVULN] += 3.0;
 					
-					if(!g_is_ticking[i])
+					if(!g_invuln_ticking[i][INVULN])
 					{
-						CreateTimer(0.10, f_TickDownInvuln, i, TIMER_REPEAT);
+						int i_filter = CreateEntityByName("filter_damage_type");
+						DispatchKeyValueFloat(i_filter, "damagetype", 16384.0);
+						DispatchKeyValue(i_filter, "targetname", "fdt_357immune");
+						
+						DataPack dp_invuln = CreateDataPack();
+						ResetPack(dp_invuln);
+						WritePackCell(dp_invuln, i);
+						WritePackCell(dp_invuln, INVULN);
+						WritePackCell(dp_invuln, i_filter);
+
+						CreateTimer(0.10, f_TickDown, dp_invuln, TIMER_REPEAT);
 					}
 					
 					SetVariantString("fdt_357immune");
@@ -354,14 +363,25 @@ public void f_MakeEntsImmune(int i_ammo, float[3] vec_splat_origin, int i_throwe
 	}
 }
 
-public Action f_TickDownInvuln(Handle Timer06, int i_entity)
+public Action f_TickDown(Handle Timer06, any dp)
 {
+	ResetPack(dp, false);
+	int i_entity = ReadPackCell(dp);
+	int i_mode = ReadPackCell(dp);
+	
 	if(IsValidEntity(i_entity))
 	{
-		g_invuln_time[i_entity] -= 0.10;
-		if(g_invuln_time[i_entity] < 0)
+		g_invuln_ticking[i_entity][i_mode] = true;
+		g_invuln_time[i_entity][i_mode] -= 0.10;
+		if(g_invuln_time[i_entity][i_mode] < 0)
 		{
-			g_invuln_time[i_entity] = 0.0;
+			g_invuln_time[i_entity][i_mode] = 0.0;
+			g_invuln_ticking[i_entity][i_mode] = false;
+			
+			int i_filter = ReadPackCell(dp);
+			AcceptEntityInput(i_filter, "Kill");
+			
+			CloseHandle(dp);
 			return Plugin_Stop;
 		}
 		
@@ -370,14 +390,26 @@ public Action f_TickDownInvuln(Handle Timer06, int i_entity)
 	
 		if(StrEqual(str_classname, "player", true))
 		{
-			SetHudTextParamsEx(-1.0, 0.55, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
-			ShowHudText(i_entity, -1, "IMMUNITY : %f", g_invuln_time[i_entity]);
+			if(i_mode == INVULN)
+			{
+				SetHudTextParamsEx(-1.0, 0.55, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
+				ShowHudText(i_entity, -1, "IMMUNITY : %f", g_invuln_time[i_entity][i_mode]);
+			}
+			else if(i_mode == DECIMATE)
+			{
+				SetHudTextParamsEx(-1.0, 0.60, 0.10, {200, 200, 200, 255}, {200, 200, 200, 255}, 1, 0.0, 0.0, 0.1);
+				ShowHudText(i_entity, -1, "DECIMATED : %f", g_invuln_time[i_entity][i_mode]);
+			}
 		}
 	
 		return Plugin_Continue;
 	}
 	else
 	{
+		int i_filter = ReadPackCell(dp);
+		AcceptEntityInput(i_filter, "Kill");
+			
+		CloseHandle(dp);
 		return Plugin_Stop;
 	}
 }
