@@ -5,9 +5,9 @@
 
 public Plugin myinfo =
 {
-	name = "Artifact of Why",
+	name = "Artifact of Origin",
 	author = "Breadcrumbs",
-	description = "Because we can?",
+	description = "Your pistol opens a portal to hell",
 	version = "0.0",
 	url = "http://www.sourcemod.net/"
 }
@@ -108,14 +108,11 @@ public void f_fire_saw(float[] origin, float[] angles, int client)
 	int i_ball = f_find_entity("prop_combine_ball", i_launcher);
 	SetEntProp(i_ball, Prop_Data, "m_CollisionGroup", 1);
 	
-	float vec_laser_angles[3] = {0.0, 0.0, 0.0};
-	
 	DataPack dp_data = CreateDataPack();
 	WritePackCell(dp_data, i_ball);
-	WritePackCell(dp_data, 0);
-	WritePackFloat(dp_data, vec_laser_angles[0]);
-	WritePackFloat(dp_data, vec_laser_angles[1]);
-	WritePackFloat(dp_data, vec_laser_angles[2]);
+	WritePackFloat(dp_data, 0.0);
+	WritePackFloat(dp_data, 0.0);
+	WritePackFloat(dp_data, 0.0);
 	WritePackCell(dp_data, client);
 	
 	CreateTimer(1.5, f_start_saw, dp_data, TIMER_FLAG_NO_MAPCHANGE);
@@ -141,7 +138,6 @@ public void f_handle_saw(DataPack data)
 {	
 	ResetPack(data, false);
 	int i_ball = ReadPackCell(data);
-	int i_counter = ReadPackCell(data);
 	float vec_angle1 = ReadPackFloat(data);
 	float vec_angle2 = ReadPackFloat(data);
 	float vec_angle3 = ReadPackFloat(data);
@@ -151,7 +147,8 @@ public void f_handle_saw(DataPack data)
 	{
 		CloseHandle(data);
 		StopSound(i_ball, SNDCHAN_STATIC, "ambient/machines/machine_whine1.wav");
-		EmitSoundToAll("ambient/levels/labs/electric_explosion1.wav", SOUND_FROM_WORLD, SNDLEVEL_ROCKET);
+		EmitSoundToAll("ambient/levels/labs/electric_explosion1.wav", i_ball);
+		EmitSoundToClient(i_client, "ambient/levels/labs/electric_explosion1.wav", i_client);
 		AcceptEntityInput(i_ball, "Explode");
 		return;
 	}
@@ -221,12 +218,10 @@ public void f_handle_saw(DataPack data)
 		CloseHandle(ry_laser);
 	}
 	
-	i_counter++;
 	vec_angle2 += 2.0;
 	
 	ResetPack(data, true);
 	WritePackCell(data, i_ball);
-	WritePackCell(data, i_counter);
 	WritePackFloat(data, vec_angle1);
 	WritePackFloat(data, vec_angle2);
 	WritePackFloat(data, vec_angle3);
