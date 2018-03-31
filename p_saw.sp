@@ -133,7 +133,6 @@ public Action f_start_saw(Handle saw_timer, any dp_data)
 	
 	EmitSoundToAll("beams/beamstart5.wav", i_ball, SNDLEVEL_SNOWMOBILE);
 	EmitAmbientSound("ambient/machines/machine_whine1.wav", vec_ball_origin, i_ball);
-	CreateTimer(0.1, f_noise_loop, _, TIMER_REPEAT);
 	
 	RequestFrame(f_handle_saw, dp_data);
 }
@@ -235,11 +234,6 @@ public void f_handle_saw(DataPack data)
 	
 	//Recursion!
 	RequestFrame(f_handle_saw, data);
-}
-
-public Action f_noise_loop(Handle noise_loop)
-{
-	
 }
 
 // Finds an entity with a given class and a given owner
