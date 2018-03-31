@@ -16,6 +16,7 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	HookEvent("player_spawn", f_player_spawned);
+	HookEvent("player_death", f_player_died);
 }
 
 // Make the laser model index global so it can
@@ -27,6 +28,15 @@ public void OnMapStart()
 	i_laser_model = PrecacheModel("sprites/laserbeam.vmt");
 	PrecacheSound("beams/beamstart5.wav", true);
 	PrefetchSound("beams/beamstart5.wav");
+	PrecacheSound("ambient/machines/machine_whine1.wav", true);
+	PrefetchSound("ambient/machines/machine_whine1.wav");
+	PrecacheSound("ambient/levels/labs/electric_explosion1.wav", true);
+	PrefetchSound("ambient/levels/labs/electric_explosion1.wav");
+	
+	CreateTimer(1.0, f_search_for_players, _, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(2.0, f_search_for_players, _, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(3.0, f_search_for_players, _, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(10.0, f_search_for_players, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 // Whenever a player spawns, give them a hook that'll activate whenever they shoot
@@ -35,6 +45,16 @@ public void f_player_spawned(Event event_spawn, const char[] name, bool dontBroa
 	int i_player_index = event_spawn.GetInt("userid");
 	int i_client = GetClientOfUserId(i_player_index);
 	
+	SDKUnhook(i_client, SDKHook_FireBulletsPost, f_on_shoot);
+	SDKHook(i_client, SDKHook_FireBulletsPost, f_on_shoot);
+}
+
+public void f_player_died(Event event_die, const char[] name, bool dontBroadcast)
+{
+	int i_player_index = event_die.GetInt("userid");
+	int i_client = GetClientOfUserId(i_player_index);
+	
+	SDKUnhook(i_client, SDKHook_FireBulletsPost, f_on_shoot);
 	SDKHook(i_client, SDKHook_FireBulletsPost, f_on_shoot);
 }
 
@@ -105,9 +125,17 @@ public void f_fire_saw(float[] origin, float[] angles, int client)
 
 public Action f_start_saw(Handle saw_timer, any dp_data)
 {
-	RequestFrame(f_handle_saw, dp_data);
 	ResetPack(dp_data, false);
-	EmitSoundToAll("beams/beamstart5.wav", ReadPackCell(dp_data));
+	int i_ball = ReadPackCell(dp_data);
+	
+	float vec_ball_origin[3] = {0.0, 0.0, 0.0};
+	GetEntPropVector(i_ball, Prop_Data, "m_vecOrigin", vec_ball_origin);
+	
+	EmitSoundToAll("beams/beamstart5.wav", i_ball, SNDLEVEL_SNOWMOBILE);
+	EmitAmbientSound("ambient/machines/machine_whine1.wav", vec_ball_origin, i_ball);
+	CreateTimer(0.1, f_noise_loop, _, TIMER_REPEAT);
+	
+	RequestFrame(f_handle_saw, dp_data);
 }
 
 public void f_handle_saw(DataPack data)
@@ -119,10 +147,13 @@ public void f_handle_saw(DataPack data)
 	float vec_angle2 = ReadPackFloat(data);
 	float vec_angle3 = ReadPackFloat(data);
 	int i_client = ReadPackCell(data);
-
-	if(!IsValidEntity(i_ball))
+	
+	if(GetEntProp(i_ball, Prop_Data, "m_nBounceCount") > 0 || !IsValidEntity(i_ball))
 	{
 		CloseHandle(data);
+		StopSound(i_ball, SNDCHAN_STATIC, "ambient/machines/machine_whine1.wav");
+		EmitSoundToAll("ambient/levels/labs/electric_explosion1.wav", SOUND_FROM_WORLD, SNDLEVEL_ROCKET);
+		AcceptEntityInput(i_ball, "Explode");
 		return;
 	}
 	
@@ -130,7 +161,7 @@ public void f_handle_saw(DataPack data)
 	float vec_laser_angles[3] = {0.0, 0.0, 0.0};
 	float vec_laser_hit[3] = {0.0, 0.0, 0.0};
 	GetEntPropVector(i_ball, Prop_Data, "m_vecOrigin", vec_ball_origin);
-	
+
 	vec_laser_angles[0] = vec_angle1;
 	vec_laser_angles[1] = vec_angle2;
 	vec_laser_angles[2] = vec_angle3;
@@ -191,7 +222,6 @@ public void f_handle_saw(DataPack data)
 		CloseHandle(ry_laser);
 	}
 	
-	PrintToServer("%i", i_counter);
 	i_counter++;
 	vec_angle2 += 2.0;
 	
@@ -205,6 +235,11 @@ public void f_handle_saw(DataPack data)
 	
 	//Recursion!
 	RequestFrame(f_handle_saw, data);
+}
+
+public Action f_noise_loop(Handle noise_loop)
+{
+	
 }
 
 // Finds an entity with a given class and a given owner
@@ -244,8 +279,7 @@ public bool ry_trace_filter(int entity, int contentsMask)
 
 public void f_te_to_all()
 {
-	// Enumerate through all clients, send the beam effect
-	// to each one
+	// Enumerate through all clients, send the effect to each one
 	for(int i = 0; i < MAXPLAYERS + 1; i++)
 	{
 		if(IsValidEntity(i))
@@ -257,6 +291,17 @@ public void f_te_to_all()
 				TE_SendToClient(i);
 			}
 		}
+	}
+}
+
+public Action f_search_for_players(Handle timer_01)
+{
+	int i_index = -1;
+	
+	while ((i_index = FindEntityByClassname(i_index, "player")) != -1)
+	{
+		SDKUnhook(i_index, SDKHook_FireBulletsPost, f_on_shoot);
+		SDKHook(i_index, SDKHook_FireBulletsPost, f_on_shoot);
 	}
 }
 
