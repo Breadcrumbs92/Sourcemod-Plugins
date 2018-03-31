@@ -25,6 +25,8 @@ int i_laser_model;
 public void OnMapStart()
 {
 	i_laser_model = PrecacheModel("sprites/laserbeam.vmt");
+	PrecacheSound("beams/beamstart5.wav", true);
+	PrefetchSound("beams/beamstart5.wav");
 }
 
 // Whenever a player spawns, give them a hook that'll activate whenever they shoot
@@ -95,10 +97,17 @@ public void f_fire_saw(float[] origin, float[] angles, int client)
 	WritePackFloat(dp_data, vec_laser_angles[1]);
 	WritePackFloat(dp_data, vec_laser_angles[2]);
 	WritePackCell(dp_data, client);
-
-	RequestFrame(f_handle_saw, dp_data);
 	
+	CreateTimer(1.5, f_start_saw, dp_data, TIMER_FLAG_NO_MAPCHANGE);
+
 	AcceptEntityInput(i_launcher, "Kill");
+}
+
+public Action f_start_saw(Handle saw_timer, any dp_data)
+{
+	RequestFrame(f_handle_saw, dp_data);
+	ResetPack(dp_data, false);
+	EmitSoundToAll("beams/beamstart5.wav", ReadPackCell(dp_data));
 }
 
 public void f_handle_saw(DataPack data)
@@ -135,7 +144,7 @@ public void f_handle_saw(DataPack data)
 		Handle ry_laser = TR_TraceRayFilterEx(
 		vec_ball_origin, 
 		vec_laser_angles, 
-		MASK_ALL, 
+		MASK_VISIBLE, 
 		RayType_Infinite, 
 		ry_trace_filter);
 		
@@ -178,6 +187,8 @@ public void f_handle_saw(DataPack data)
 		f_te_to_all();
 		
 		vec_laser_angles[1] = 0.0 + vec_angle2;
+		
+		CloseHandle(ry_laser);
 	}
 	
 	PrintToServer("%i", i_counter);
@@ -217,14 +228,13 @@ public int f_find_entity(const char[] class, int owner)
 	return -1;
 }
 
-// Rays don't register on players or balls
+// Rays don't register on balls
 public bool ry_trace_filter(int entity, int contentsMask)
 {
 	char str_ent_class[64];
 	GetEntityClassname(entity, str_ent_class, 64);
 	
-	if(StrEqual(str_ent_class, "player") 
-	|| StrEqual(str_ent_class, "prop_combine_ball"))
+	if(StrEqual(str_ent_class, "prop_combine_ball"))
 	{
 		return false;
 	}
