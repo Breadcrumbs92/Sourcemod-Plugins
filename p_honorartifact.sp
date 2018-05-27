@@ -23,6 +23,11 @@ public void OnPluginStart()
 
 public void OnAttack(int victim, int attacker, int inflictor, float damage, int damagetype, int ammotype, int hitbox, int hitgroup)
 {
+	if(ammotype == -1)
+	{
+		return;
+	}
+	
 	char attackerName[64];
 	GetEntityClassname(attacker, attackerName, 64);
 	
@@ -47,7 +52,7 @@ public void OnAttack(int victim, int attacker, int inflictor, float damage, int 
 			return;
 		}
 		
-		if(hitbox == 1)
+		if(hitbox == 1 || hitbox == 0)
 		{
 			TeleportEntity(barrel, targetOrigin, NULL_VECTOR, NULL_VECTOR);
 			RequestFrame(ExplodeBarrel, barrel);
@@ -111,7 +116,7 @@ public void MakeCombine(DataPack dp)
 	DispatchKeyValue(crunchy, "additionalequipment", "weapon_ar2");
 	SetEntProp(crunchy, Prop_Data, "m_fIsElite", 1);
 	DispatchSpawn(crunchy);
-	TeleportEntity(crunchy, origin, angles, NULL_VECTOR);
+	TeleportEntity(crunchy, origin, NULL_VECTOR, NULL_VECTOR);
 	
 	CloseHandle(dp);
 }
