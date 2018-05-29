@@ -17,6 +17,7 @@ int numPhysProps = 0;   // Variable to store the amount of pre-existing prop_phy
 ArrayList propNames;    // List to store names of valid (spawnable) prop models
 DataPack existingProps; // Datapack storing index of every pre-existing prop_physics
 
+char breakables[1024] = "models/props_c17/oildrum001_explosive.mdl models/props_junk/wood_crate001a.mdl models/props_junk/wood_crate002a.mdl models/props_canal/boat001a.mdl models/props_junk/gascan001a.mdl models/props_interiors/furniture_shelf01a.mdl models/props_junk/wood_pallet001a.mdl models/props_combine/breenbust.mdl models/props_junk/cardboard_box001a.mdl models/props_junk/watermelon01.mdl";
 
 public void OnPluginStart()
 {
@@ -26,23 +27,23 @@ public void OnPluginStart()
 	propNames.SetString(0, "models/props_junk/wood_crate001a.mdl"); 
 	propNames.SetString(1, "models/props_junk/wood_crate002a.mdl"); 
 	propNames.SetString(2, "models/props_junk/cardboard_box001a.mdl"); 
-	propNames.SetString(3, "models/props_junk/beam01a_cluster01.mdl"); 
+	propNames.SetString(3, "models/props_junk/ibeam01a_cluster01.mdl"); 
 	propNames.SetString(4, "models/props_junk/pushcart01a.mdl"); 
-	propNames.SetString(5, "models/props_junk/wood_pallet001.mdl"); 
+	propNames.SetString(5, "models/props_junk/wood_pallet001a.mdl"); 
 	propNames.SetString(6, "models/props_c17/oildrum001_explosive.mdl"); 
 	propNames.SetString(7, "models/props_c17/oildrum001.mdl"); 
 	propNames.SetString(8, "models/props_c17/lockers001a.mdl"); 
-	propNames.SetString(9, "models/props_c17/substation_transformer01b.mdl");
+	propNames.SetString(9, "models/props_docks/channelmarker01a.mdl");
 	propNames.SetString(10, "models/props_interiors/radiator01a.mdl");
 	propNames.SetString(11, "models/props_interiors/refrigerator01a.mdl");
 	propNames.SetString(12, "models/props_interiors/vendingmachinesoda01a.mdl");
 	propNames.SetString(13, "models/props_interiors/furniture_shelf01a.mdl");
 	propNames.SetString(14, "models/props_interiors/bathtub01a.mdl");
 	propNames.SetString(15, "models/props_interiors/furniture_couch01a.mdl");
-	propNames.SetString(16, "models/props_lab/workspace003.mdl");
+	propNames.SetString(16, "models/props_junk/watermelon01.mdl");
 	propNames.SetString(17, "models/props_doors/door03_slotted_left.mdl");
 	propNames.SetString(18, "models/props_canal/boat001a.mdl");
-	propNames.SetString(19, "models/props_c17/fence02a.mdl");
+	propNames.SetString(19, "models/props_combine/breenbust.mdl");
 	propNames.SetString(20, "models/props_c17/furniturestove001a.mdl");
 	propNames.SetString(21, "models/props_c17/furniturewashingmachine001a.mdl");
 	propNames.SetString(22, "models/props_c17/trappropeller_engine.mdl");
@@ -60,9 +61,14 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	// When the map starts, find every prop_physics and store it in a Datapack
+	CreateTimer(0.3, CreatePropList, _, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action CreatePropList(Handle timer)
+{
 	existingProps = ListPropPhysics();
 	numPhysProps = existingProps.Position;
-	existingProps.Reset(false);
+	existingProps.Reset();
 	
 	// Create a damagefilter to protect spawned props from falling damage
 	// Props can only take damage from drowning, effectively making them immune
@@ -72,8 +78,59 @@ public void OnMapStart()
 	DispatchSpawn(filter);
 	
 	// Populate the map with new props
-	RequestFrame(PopulateMap, filter);
+	PopulateMap(filter);
+	PrintToServer("%i", numPhysProps);
 }
+
+/*
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if(StrEqual(classname, "prop_physics") || StrEqual(classname, "prop_physics_override"))
+	{
+		SDKUnhook(entity, SDKHook_TraceAttackPost, OnAttack);
+		SDKHook(entity, SDKHook_TraceAttackPost, OnAttack);
+	}
+}
+*/
+
+/*
+
+public void OnAttack(int victim, int attacker, int inflictor, float damage, int damagetype, int ammotype, int hitbox, int hitgroup)
+{
+	char attackerName[64];
+	GetEntityClassname(attacker, attackerName, 64);
+	
+	if(StrEqual(attackerName, "player"))
+	{
+		int client = attacker;
+	
+		float clientPos[3] = {0.0, 0.0, 0.0};
+		float clientAng[3] = {0.0, 0.0, 0.0};
+		GetClientEyePosition(client, clientPos);
+		GetClientEyeAngles(client, clientAng);
+	
+		Handle ray = TR_TraceRayFilterEx(clientPos, clientAng, MASK_SOLID, RayType_Infinite, NoPlayerFilter);
+		
+		float hitPos[3] = {0.0, 0.0, 0.0};
+		TR_GetEndPosition(hitPos, ray);
+		
+		int physEx = CreateEntityByName("env_physexplosion");
+		DispatchKeyValue(physEx, "magnitude", "100.0");
+		DispatchKeyValue(physEx, "radius", "300");
+		
+		SetVariantString("spawnflags 1");
+		AcceptEntityInput(physEx, "AddOutput");
+		
+		DispatchSpawn(physEx);
+		TeleportEntity(physEx, hitPos, NULL_VECTOR, NULL_VECTOR);
+		ActivateEntity(physEx);
+		AcceptEntityInput(physEx, "Explode");
+		
+		AcceptEntityInput(physEx, "Kill");
+		ray.Close();
+	}
+}
+*/
 
 // ------------------------------------------
 // Attempts to create a random prop at a given point
@@ -83,8 +140,8 @@ public void OnMapStart()
 static bool CreateProp(float[3] origin, int filter)
 {
 	// Create a hull trace to check if something is in the way of spawning the prop
-	float mins[3] = {-32.0, -32.0, -32.0};
-	float maxs[3] = {32.0, 32.0, 32.0};
+	float mins[3] = {-48.0, -48.0, -48.0};
+	float maxs[3] = {48.0, 48.0, 48.0};
 	Handle hullTrace = TR_TraceHullEx(origin, origin, mins, maxs, MASK_PLAYERSOLID);
 	
 	if(TR_DidHit(hullTrace) || TR_PointOutsideWorld(origin))
@@ -106,8 +163,17 @@ static bool CreateProp(float[3] origin, int filter)
 		propNames.GetString(GetRandomInt(0, propNames.Length - 1), randomPropName, 64);
 		
 		// Create the prop
-		// A prop_physics_override is used to make more prop models usable
-		int prop = CreateEntityByName("prop_physics_override");
+		int prop;
+		
+		if(StrContains(breakables, randomPropName) != -1)
+		{
+			prop = CreateEntityByName("prop_physics");
+		}
+		else
+		{
+			// A prop_physics_override is used to make more prop models usable
+			prop = CreateEntityByName("prop_physics_override");
+		}
 		DispatchKeyValue(prop, "model", randomPropName);
 
 		// Props are made immune to damage 2 seconds after spawning
@@ -130,7 +196,6 @@ static bool CreateProp(float[3] origin, int filter)
 public Action DestroyFilter(Handle timer, int filter)
 {
 	AcceptEntityInput(filter, "Kill");
-	return Plugin_Continue;
 }
 
 //-----------------------------------------------------
@@ -142,24 +207,37 @@ public void PopulateMap(int filter)
 {
 	for(int i = 0; i < propsToAdd; i++)
 	{
-		bool success = false;
-		while(!success)
+		if(GetEntityCount() > GetMaxEntities() - 200)
 		{
-			int propIndex = GetRandomInt(0, numPhysProps - 10);
-			existingProps.Position = propIndex;
-			PrintToServer("%i", propIndex);
-			int ent = existingProps.ReadCell();
+			PrintToServer("TrashArtifact: Too close to entity limit to make more props, aborting");
+		}
 		
-			int radiusSize = 512;
+		bool success = false;
+		existingProps.Reset();
+		
+		int propIndex;
+		int ent = 0;
+		while(ent == 0)
+		{
+			propIndex = GetRandomInt(0, numPhysProps - 10);
+			SetPackPosition(existingProps, propIndex);
+			ent = existingProps.ReadCell();
+		}
+
+		int radiusSize = 512;
+		int attempts = 0;
+		while(!success && attempts < 256)
+		{
 			float origin[3] = {0.0, 0.0, 0.0};
 			GetEntPropVector(ent, Prop_Send, "m_vecOrigin", origin);
-		
+			
 			origin[0] += GetRandomInt(-radiusSize, radiusSize);
 			origin[1] += GetRandomInt(-radiusSize, radiusSize);
 			origin[2] += GetRandomInt(-radiusSize, radiusSize);	
 			
-			success = CreateProp(origin, filter);
-		} 
+			success = CreateProp(origin, filter);			
+			attempts++;
+		}
 	}
 }
 
@@ -170,7 +248,7 @@ public void PopulateMap(int filter)
 public DataPack ListPropPhysics()
 {
 	DataPack props = CreateDataPack();
-	props.Reset(false);
+	props.Reset();
 	int numProps = 0;
 	
 	for(int i = 0; i < GetMaxEntities(); i++)
@@ -183,10 +261,24 @@ public DataPack ListPropPhysics()
 			if(StrEqual("prop_physics", classname))
 			{
 				props.WriteCell(i);
+				PrintToServer("%i", i);
 				numProps++;
 			}
 		}
 	}
 	
 	return props;
+}
+
+public bool NoPlayerFilter(int entity, int contentsMask)
+{
+	char classname[64];
+	GetEntityClassname(entity, classname, 64);
+	
+	if(StrEqual(classname, "player"))
+	{
+		return false;
+	}
+	
+	return true;
 }
