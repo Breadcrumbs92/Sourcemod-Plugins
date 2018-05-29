@@ -12,13 +12,15 @@ public Plugin myinfo =
 	url = "http://www.sourcemod.net/"
 }
 
-int propsToAdd = 500;
-int numPhysProps = 0;
-ArrayList propNames;
-DataPack existingProps;
+int propsToAdd = 500;   // Amount of new props to create on the map
+int numPhysProps = 0;   // Variable to store the amount of pre-existing prop_physics on a map
+ArrayList propNames;    // List to store names of valid (spawnable) prop models
+DataPack existingProps; // Datapack storing index of every pre-existing prop_physics
+
 
 public void OnPluginStart()
 {
+	// Initialize list of valid prop models
 	propNames = CreateArray(64, 32);
 
 	propNames.SetString(0, "models/props_junk/wood_crate001a.mdl"); 
@@ -57,75 +59,85 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
+	// When the map starts, find every prop_physics and store it in a Datapack
 	existingProps = ListPropPhysics();
 	numPhysProps = existingProps.Position;
 	existingProps.Reset(false);
 	
+	// Create a damagefilter to protect spawned props from falling damage
+	// Props can only take damage from drowning, effectively making them immune
 	int filter = CreateEntityByName("filter_damage_type");
-	DispatchKeyValueFloat(filter, "damagetype", 1.0); // Ignore damage of type CRUSH
+	DispatchKeyValueFloat(filter, "damagetype", 16384.0); 
 	DispatchKeyValue(filter, "targetname", "filter_immune");
-	DispatchKeyValueFloat(filter, "Negated", 1.0);
 	DispatchSpawn(filter);
 	
+	// Populate the map with new props
 	RequestFrame(PopulateMap, filter);
 }
 
 // ------------------------------------------
 // Attempts to create a random prop at a given point
-// If it cannot, returns false
+// If there is something in the way, it fails and returns false
 // If it succeeds, returns true
 //-------------------------------------------
-static bool CreateProp(float[3] origin, int filter = -1)
+static bool CreateProp(float[3] origin, int filter)
 {
+	// Create a hull trace to check if something is in the way of spawning the prop
 	float mins[3] = {-32.0, -32.0, -32.0};
 	float maxs[3] = {32.0, 32.0, 32.0};
+	Handle hullTrace = TR_TraceHullEx(origin, origin, mins, maxs, MASK_PLAYERSOLID);
 	
-	Handle hullTrace = TR_TraceHullFilterEx(origin, origin, mins, maxs, MASK_PLAYERSOLID, HullFilter);
-	
-	if(TR_DidHit(hullTrace))
+	if(TR_DidHit(hullTrace) || TR_PointOutsideWorld(origin))
 	{
-		PrintToServer("Something is in the way!");
-		
+		// Something is in the way or we're trying to spawn in the void, so fail and return false
 		hullTrace.Close();
 		return false;
 	}
 	else
 	{
+		// Generate a random velocity vector
 		float randVector[3] = {0.0, 0.0, 0.0};
 		randVector[0] = GetRandomFloat(-1024.0, 1024.0);
 		randVector[1] = GetRandomFloat(-1024.0, 1024.0);
 		randVector[2] = GetRandomFloat(-1024.0, 1024.0);
 		
-		PrintToServer("Space is clear!");
+		// Get a random prop model from the predefined list
 		char randomPropName[64];
 		propNames.GetString(GetRandomInt(0, propNames.Length - 1), randomPropName, 64);
 		
-		int prop = CreateEntityByName("prop_physics");
+		// Create the prop
+		// A prop_physics_override is used to make more prop models usable
+		int prop = CreateEntityByName("prop_physics_override");
 		DispatchKeyValue(prop, "model", randomPropName);
-		
-		if(filter != -1)
-		{
-			// Props are made immune to CRUSH damage 2 seconds after spawning
-			// This prevents breakables from permaturely breaking
-			SetVariantString("immune_filter");
-			AcceptEntityInput(prop, "SetDamageFilter");
-		}
-		DispatchSpawn(prop);
-		TeleportEntity(prop, origin, NULL_VECTOR, NULL_VECTOR);
-		
+
+		// Props are made immune to damage 2 seconds after spawning
+		// This prevents breakables from permaturely breaking
+		SetVariantString("immune_filter");
+		AcceptEntityInput(prop, "SetDamageFilter");
 		CreateTimer(2.0, DestroyFilter, filter, TIMER_FLAG_NO_MAPCHANGE);
+		
+		// Spawn prop, push it with the random velocity vector
+		DispatchSpawn(prop);
+		TeleportEntity(prop, origin, NULL_VECTOR, randVector);
+		SetEntPropVector(prop, Prop_Data, "m_vecAbsVelocity", Float:{0.0, 0.0, 0.0});
 		
 		hullTrace.Close();
 		
-		return true;
+		return true; 
 	}
 }
 
 public Action DestroyFilter(Handle timer, int filter)
 {
 	AcceptEntityInput(filter, "Kill");
+	return Plugin_Continue;
 }
 
+//-----------------------------------------------------
+// Spawns random props all around the map
+// Props are spawned around existing prop_physics -
+// This ensures they stay at least vaguely inside of the playable area
+//-----------------------------------------------------
 public void PopulateMap(int filter)
 {
 	for(int i = 0; i < propsToAdd; i++)
@@ -138,7 +150,7 @@ public void PopulateMap(int filter)
 			PrintToServer("%i", propIndex);
 			int ent = existingProps.ReadCell();
 		
-			int radiusSize = 128;
+			int radiusSize = 512;
 			float origin[3] = {0.0, 0.0, 0.0};
 			GetEntPropVector(ent, Prop_Send, "m_vecOrigin", origin);
 		
@@ -151,19 +163,10 @@ public void PopulateMap(int filter)
 	}
 }
 
-public bool HullFilter(int entity, int contentsMask)
-{
-	char classname[64];
-	GetEntityClassname(entity, classname, 64);
-	
-	if(StrEqual(classname, "player"))
-	{
-		return false;
-	}
-	
-	return true;
-}
-
+//-----------------------------------------------------
+// Enumerates through every single prop_physics that already exists on the map
+// Then puts each one's index into a datapack
+//-----------------------------------------------------
 public DataPack ListPropPhysics()
 {
 	DataPack props = CreateDataPack();
