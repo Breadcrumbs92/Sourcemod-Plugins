@@ -47,7 +47,7 @@ None of this trash is coded or commented well. Tread lightly.
 
 ## Kin (`p_kinartifact.sp`)
 
-#### *Their kin will rise from the ashes*
+#### *Their kin will rise from the ashes.*
 
 * When NPCs are killed, they transform into a lesser version of themselves.
 
@@ -96,7 +96,7 @@ Gunship | Like 50 manhacks
 * Bodyshotting an enemy causes all entities in a radius to turn into combine soldiers and the player loses 50 health.
 * Missing an enemy causes the player to explode and instantly die.
 
-## Trash (`p_proppopulator.sp`)
+## Trash (`p_trashartifact.sp`)
 
 #### *Tonight, on Hoarders:*
 
