@@ -14,11 +14,14 @@ public Plugin myinfo =
 
 float pushChance = 0.000005;
 float pushFactor = 10000.0;
-float maxPush = 1.0;
+float maxPush = 0.10;
 
-char pushableObjects[64] = "prop_physics item_ weapon_ npc_ prop_vehicle_airboat";
+char pushableObjects[128] = "prop_physics item_ weapon_ npc_ prop_vehicle_airboat prop_vehicle_jeep";
 
 ConVar cvPushProb;
+ConVar cvLinearGrowth;
+ConVar cvPowerFactor;
+ConVar cvCheckFrames;
 
 public void OnPluginStart()
 {
@@ -30,6 +33,31 @@ public void OnPluginStart()
 	0.0, // Min value
 	true, 
 	1.0); // Max value
+	
+	cvLinearGrowth = CreateConVar("rubber_growth_factor",
+	"0.1",
+	"Growth factor of push probability",
+	FCVAR_NOTIFY,
+	true,
+	0.0, // Min value
+	false);
+	
+	cvPowerFactor = CreateConVar("rubber_growth_power",
+	"1",
+	"Growth power of push probailitiy",
+	FCVAR_NOTIFY,
+	false,
+	0.0,
+	false);
+	
+	cvCheckFrames = CreateConVar("rubber_check_every_nth",
+	"5",
+	"Bounce props every nth frame",
+	FCVAR_NOTIFY,
+	true,
+	1.0,
+	true,
+	1000.0);
 	
 	cvPushProb.AddChangeHook(OnProbChange);
 }
@@ -47,6 +75,11 @@ public Action ChatProbability(Handle timer)
 
 public void OnGameFrame()
 {
+	if(GetGameTickCount() % GetConVarInt(cvCheckFrames) != 0)
+	{
+		return;
+	}
+	
 	for(int i = 0; i < GetMaxEntities(); i++)
 	{
 		if(IsValidEntity(i))
@@ -65,7 +98,11 @@ public void OnGameFrame()
 					TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, pushVector);
 					SetEntPropVector(i, Prop_Data, "m_vecAbsVelocity", Float:{0.0, 0.0, 0.0});
 					
-					pushChance += GetConVarFloat(cvPushProb);
+					float power = GetConVarFloat(cvPowerFactor);
+					float factor = GetConVarFloat(cvLinearGrowth);
+					
+					pushChance = Pow(GetGameTime(), power) * factor;
+					pushChance /= 6000.0;
 					PrintToServer("%f", pushChance);
 					
 					if(pushChance > maxPush)
