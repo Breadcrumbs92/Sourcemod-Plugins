@@ -14,7 +14,7 @@ public Plugin myinfo =
 	name = "Aritfact of Trash",
 	author = "Breadcrumbs",
 	description = "Props invade the map",
-	version = "1.1",
+	version = "1.2",
 	url = "http://www.sourcemod.net/"
 }
 
@@ -23,11 +23,12 @@ float bhOrigin[3] = {0.0, 0.0, 0.0};   // Center of black hole
 float whOrigin[3] = {0.0, 0.0, 0.0};   // Center of white hole
 
 int propsToAdd = 500;                  // Amount of new props to create on the map
-int numProps;                          // Variable to store the amount of pre-existing prop_physics on a map
-float sngStrength = 5000.0;            // Current strength of the black and white holes
+int numProps;                          // Variable to store the amount of pre-existing prop_physics on a map          
 ArrayList propNames;                   // List to store names of valid (spawnable) prop models
 ArrayList existingProps;               // Arraylist storing index of every pre-existing prop_physics
-ConVar cvMakeSingularities;            // CVar to enable/disable spawning of black and white holes
+ConVar cvMakeSingularities;  
+ConVar cvSngStrength;                  
+ConVar cvForceCutoff;
 Handle sngLoop;                        // Handle to the timer that deals with singularity logic
 Handle velocityCall;                   // Fuck you, sourcemod
 char breakables[1024] = "models/props_c17/oildrum001_explosive.mdl models/props_junk/wood_crate001a.mdl models/props_junk/wood_crate002a.mdl models/props_canal/boat001a.mdl models/props_junk/gascan001a.mdl models/props_interiors/furniture_shelf01a.mdl models/props_junk/wood_pallet001a.mdl models/props_combine/breenbust.mdl models/props_junk/cardboard_box001a.mdl models/props_junk/watermelon01.mdl models/props_c17/canister02a.mdl models/props_c17/bench01a.mdl models/props_c17/furnituredrawer003a.mdl models/props_c17/furnituretable003a.mdl models/props_wasteland/cafeteria_table.001a.mdl models/props_wasteland/wood_fence01a.mdl models/props_junk/glassbottle01a.mdl";
@@ -48,6 +49,26 @@ public void OnPluginStart()
 		0.0,
 		true,
 		1.0);
+
+	cvSngStrength = CreateConVar(
+		"trash_singularity_strength",
+		"500.0",
+		"????",
+		FCVAR_NOTIFY,
+		true,
+		0.0,
+		true,
+		99999999999.0);
+
+	cvForceCutoff = CreateConVar(
+		"trash_singularity_cutoff",
+		"20.0",
+		"????",
+		FCVAR_NOTIFY,
+		true,
+		0.0,
+		true,
+		100000.0);
 }
 
 //-------------------------------------------
@@ -116,7 +137,6 @@ public Action CreatePropList(Handle timer)
 
 public void OnMapEnd()
 {
-	sngStrength = 1000.0;
 	sngLoop.Close();
 }
 
@@ -179,11 +199,23 @@ public bool CreateSingularity(float[3] origin, int type)
 {
 	if(!IsAreaBlocked(origin, 64.0))
 	{
+		// Prepare combine ball launcher 
+		// Most of these values are numerically irrelevant, 
+		// but are needed simply to exist for the launcher to work
+		int launcher = CreateEntityByName("point_combine_ball_launcher");
+		DispatchSpawn(launcher);
+		DispatchKeyValueFloat(launcher, "launchconenoise", 10.0);
+		DispatchKeyValueFloat(launcher, "ballradius", 20.0);
+		DispatchKeyValueFloat(launcher, "ballcount", 1.0);
+		DispatchKeyValueFloat(launcher, "minspeed", 0.0);
+		DispatchKeyValueFloat(launcher, "maxspeed", 0.0);
+		DispatchKeyValueFloat(launcher, "maxballbounces", 4.0);
+
 		switch(type)
 		{
 			case SINGULARITY_TIMER:
 			{
-				sngLoop = CreateTimer(0.1, HandleSingularity, _, TIMER_REPEAT);
+				sngLoop = CreateTimer(0.2, HandleSingularity, _, TIMER_REPEAT);
 			}
 			case BLACK_HOLE:
 			{
@@ -191,6 +223,7 @@ public bool CreateSingularity(float[3] origin, int type)
 				bhOrigin[1] = origin[1];
 				bhOrigin[2] = origin[2];
 				PrintToServer("[TRASH] Black hole created at %f %f %f", origin[0], origin[1], origin[2]);
+				TeleportEntity(launcher, bhOrigin, NULL_VECTOR, NULL_VECTOR);
 			}
 			case WHITE_HOLE:
 			{
@@ -198,12 +231,17 @@ public bool CreateSingularity(float[3] origin, int type)
 				whOrigin[1] = origin[1];
 				whOrigin[2] = origin[2];
 				PrintToServer("[TRASH] White hole created at %f %f %f", origin[0], origin[1], origin[2]);
+				TeleportEntity(launcher, whOrigin, NULL_VECTOR, NULL_VECTOR);
 			}
 			default:
 			{
 				PrintToServer("[TRASH] Unexpected singularity type!");
 			}
 		}
+		// Launch the ball and kill the spawner
+		AcceptEntityInput(launcher, "LaunchBall");
+		AcceptEntityInput(launcher, "Kill");
+
 		return true;
 	}
 	return false;
@@ -217,7 +255,6 @@ public bool CreateSingularity(float[3] origin, int type)
 public Action HandleSingularity(Handle loop)
 {
 	int index = -1;
-	sngStrength += 1.0;
 
 	while((index = FindEntityByClassname(index, "prop_physics")) != -1)
 	{
@@ -232,25 +269,32 @@ public Action HandleSingularity(Handle loop)
 		GetEntPropVector(index, Prop_Send, "m_vecOrigin", propOrigin);
 		GetEntityVelocity(index, propVelocity);
 
-		// If there is a prop in center of the black hole
-		/*
-		if(IsAreaBlocked(bhOrigin, 1.0))
+		// If there is a prop in the center of the black hole
+		// Teleport it to the white hole
+		if(IsAreaBlocked(bhOrigin, 16.0))
 		{	
 			int ent = TR_GetEntityIndex(INVALID_HANDLE);
-			if(IsValidEntity(ent)) TeleportEntity(ent, whOrigin, NULL_VECTOR, propVelocity);
+			if(IsValidEntity(ent)) 
+			{
+				char classname[64];
+				GetEntityClassname(ent, classname, 64);
+				if(StrEqual(classname, "prop_physics") || StrEqual(classname, "prop_physics_override")) 
+				{
+					// TeleportEntity(ent, whOrigin, NULL_VECTOR, NULL_VECTOR);
+				}
+			}
 		}
-		*/
 
 		dist = GetVectorDistance(bhOrigin, propOrigin);
-		sngPower = sngStrength/dist;
+		sngPower = GetConVarFloat(cvSngStrength)/Pow(dist, 1/4.0);
 
 		MakeVectorFromPoints(propOrigin, bhOrigin, suckVector);
 		ScaleVector(suckVector, 1.0/dist);
 		ScaleVector(suckVector, sngPower);
-
+		
 		// Replace dist and power values with ones for the white hole
 		dist = GetVectorDistance(whOrigin, propOrigin);
-		sngPower = sngStrength/dist;
+		sngPower = GetConVarFloat(cvSngStrength)/Pow(dist, 1/4.0);
 
 		MakeVectorFromPoints(propOrigin, whOrigin, pushVector);
 		ScaleVector(pushVector, 1.0/dist);
@@ -260,12 +304,13 @@ public Action HandleSingularity(Handle loop)
 		AddVectors(pushVector, suckVector, finalVector);
 		AddVectors(finalVector, propVelocity, finalVector);
 
-		if(GetVectorLength(finalVector) > 5.0)
+		PrintToServer("finalVector: %f, %f, %f", finalVector[0], finalVector[1], finalVector[2]);
+
+		if(sngPower > GetConVarFloat(cvForceCutoff))
 		{
 			TeleportEntity(index, NULL_VECTOR, NULL_VECTOR, finalVector);
 			SetEntPropVector(index, Prop_Data, "m_vecAbsVelocity", Float:{0.0, 0.0, 0.0});
 		}
-
 	}
 	return Plugin_Continue;
 }
@@ -295,31 +340,37 @@ public void PopulateMap(int filter)
 		bool success = false;
 		int ent = existingProps.Get(GetRandomInt(0, numProps - 1));
 
+		// This check shouldn't be necessary,
+		// But sometimes our arraylist screws up and gives us invalid props
 		if(IsValidEntity(ent))
 		{
-			int radiusSize = 512;
-			int attempts = 0;
-			while(!success && attempts < 256)
+			if(HasEntProp(ent, Prop_Send, "m_vecOrigin"))
 			{
-				float origin[3] = {0.0, 0.0, 0.0};
-				GetEntPropVector(ent, Prop_Send, "m_vecOrigin", origin);
-
-				origin[0] += GetRandomInt(-radiusSize, radiusSize);
-				origin[1] += GetRandomInt(-radiusSize, radiusSize);
-				origin[2] += GetRandomInt(-radiusSize, radiusSize);
-
-				// When necessary, create a singularity rather than a prop
-				if(i < SINGULARITY_TYPES)
+				int radiusSize = 512;
+				int attempts = 0;
+				while(!success && attempts < 256)
 				{
-					success = CreateSingularity(origin, i);
-					attempts++;
-				}
-				else
-				{
-					success = CreateProp(origin, filter);
-					attempts++;
+					float origin[3] = {0.0, 0.0, 0.0};
+					GetEntPropVector(ent, Prop_Send, "m_vecOrigin", origin);
+
+					origin[0] += GetRandomInt(-radiusSize, radiusSize);
+					origin[1] += GetRandomInt(-radiusSize, radiusSize);
+					origin[2] += GetRandomInt(-radiusSize, radiusSize);
+
+					// When necessary, create a singularity rather than a prop
+					if(i < SINGULARITY_TYPES)
+					{
+						success = CreateSingularity(origin, i);
+						attempts++;
+					}
+					else
+					{
+						success = CreateProp(origin, filter);
+						attempts++;
+					}
 				}
 			}
+			else i--;
 		}
 		else i--;
 	}
@@ -376,8 +427,29 @@ public bool IsAreaBlocked(float[3] origin, float size)
 	maxs[1] = size;
 	maxs[2] = size;
 
-	TR_TraceHull(origin, origin, mins, maxs, MASK_PLAYERSOLID);
+	TR_TraceHull(origin, origin, mins, maxs, MASK_SOLID);
 	return TR_DidHit(INVALID_HANDLE);
+}
+
+bool HasEntProp(int entity, PropType type, const char[] prop)
+{
+	if(type == Prop_Data) 
+	{
+		return (FindDataMapInfo(entity, prop) != -1);
+	}
+
+	if(type != Prop_Send) 
+	{
+		return false;
+	}
+
+	char cls[64];
+	if(!GetEntityNetClass(entity, cls, sizeof(cls))) 
+	{
+		return false;
+	}
+
+	return (FindSendPropInfo(cls, prop) != -1);
 }
 
 public void InitPropNames()
