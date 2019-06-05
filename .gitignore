@@ -1,6 +1,7 @@
 # ignore all compiled plugins.
 *.smx
 compiled/
+experiments/compiled/
 
 # ignore vscode garbage.
 .vscode/
