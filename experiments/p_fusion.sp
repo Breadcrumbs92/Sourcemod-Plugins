@@ -7,6 +7,7 @@
 #define MAX_ABSORBTION 8         // how many balls any prop is allowed to
                                  // absorb before it explodes.
 #define INFINITE_BOUNCES 8192.0  // well... close enough.
+#define NUM_AIRDROP_PROPS 10
 
 public Plugin myinfo =
 {
@@ -18,21 +19,39 @@ public Plugin myinfo =
 }
 
 char      immuneNPCs[1024] = "npc_mossman npc_vortigaunt npc_monk npc_barney npc_alyx";
+char      airdropProps[][] = 
+{
+    "models/props_c17/handrail04_medium.mdl", 
+    "models/props_c17/oildrum001.mdl",
+    "models/props_doors/door03_slotted_left.mdl",
+    "models/props_interiors_furniture_chair03a.mdl",
+    "models/props_interiors/radiator01a.mdl",
+    "models/props_junk/trashbin01a.mdl",
+    "models/props_junk/cinderblock01a.mdl",
+    "models/props_lab/filecabinet02.mdl",
+    "models/props_lab/monitor02.mdl",
+    "models/props_wasteland/controlroom_chair001a.mdl"
+};
+
 int       ballsAbsorbed[MAX_ENTS];
-int       launcher;    // the global launcher used for making all combine balls.
 bool      mapLoaded;
 bool      requestingDetonator;
 float     detonatorInterval;
 Handle    shakeTimers[MAX_ENTS];
 Handle    immunityCycle;
 
+char      absorbLight[128] = "physics/metal/metal_sheet_impact_hard2.wav";
+char      absorbWarning[128]   = "physics/metal/metal_sheet_impact_bullet2.wav";
+char      absorbCritical[128] = "physics/metal/metal_sheet_impact_bullet1.wav";
+
 public void OnPluginStart()
 {
     HookEvent("entity_killed", OnEntityKilled);
     RegConsoleCmd("fusion_rehook", RehookAll);
+    RegConsoleCmd("fusion_reshield_vital_allies", MakeEntsImmune);
 }
 
-// Yes, this is my solution to making players' weapons do no
+// Yes, this is my method of making players' weapons do no
 // damage. Fucking sue me, I will fight you.
 public void OnMapStart()
 {
@@ -48,31 +67,14 @@ public void OnMapStart()
     DispatchKeyValueFloat(filter, "damagetype", 16384.0);
     DispatchKeyValue(filter, "targetname", "filter_immune");
 
-    // TIMER_FLAG_NO_MAPCHANGE is deceptively important!
-    // Timers REALLY need to be closed when the map is not loaded.
-    immunityCycle = CreateTimer(1.0, MakeEntsImmune, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-
-    launcher = PrepareLauncher();
+    PrecacheSound(absorbLight, true);
+    PrecacheSound(absorbWarning, true);
+    PrecacheSound(absorbCritical, true);
+    PrefetchSound(absorbLight);
+    PrefetchSound(absorbWarning);
+    PrefetchSound(absorbCritical);
 
     mapLoaded = true;
-}
-
-int PrepareLauncher()
-{
-    int newLauncher = CreateEntityByName("point_combine_ball_launcher");
-    DispatchSpawn(newLauncher);
-    DispatchKeyValueFloat(newLauncher, "launchconenoise", 0.0);
-    DispatchKeyValueFloat(newLauncher, "ballradius", 20.0);
-    DispatchKeyValueFloat(newLauncher, "ballcount", 1.0);
-
-    // The ball respawn time is set to a ludicrous value
-    // so it doesn't fire again without our orders.
-    DispatchKeyValueFloat(newLauncher, "ballrespawntime", 999999.0);
-
-    // This spawnflag makes launched balls collide with players.
-    SetEntProp(newLauncher, Prop_Data, "m_spawnflags", 2);
-
-    return newLauncher;
 }
 
 public void OnMapEnd() 
@@ -92,32 +94,7 @@ public void OnMapEnd()
         }
     }
 
-    // We probably don't want the launcher entity to hang around
-    // between maps, so we kill it at the end of a map.
-    AcceptEntityInput(launcher, "Kill");
-
     mapLoaded = false;
-}
-
-public Action MakeEntsImmune(Handle timer)
-{
-    for (int i = 0; i < GetMaxEntities(); i++)
-    {
-        if (IsValidEntity(i))
-        {
-            char classname[64];
-            GetEntityClassname(i, classname, 64);
-
-            if (StrContains(immuneNPCs, classname) != -1)
-            {
-                PrintToServer("making %s immune", classname);
-                SetVariantString("filter_immune");
-                AcceptEntityInput(i, "SetDamageFilter");
-            }
-        }
-    }
-
-    return Plugin_Continue;
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -136,14 +113,27 @@ public void OnEntityCreated(int entity, const char[] classname)
         // spawned to detonate after a certain period of time.
         if (requestingDetonator)
         {
-            // It's possible for the ball to have already detonated
+            // It's very possible for the ball to have already detonated
             // and the ball's index repurposed before this timer goes off.
             // This is why we use an entity reference.
             CreateTimer(detonatorInterval, DetonateBall, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
             requestingDetonator = false;
         }
     }
-    else if (StrEqual(classname, "npc_barney"))
+    else if (StrEqual(classname, "crossbow_bolt"))
+    {
+        // Firing bolts with the crossbow doesn't trigger the
+        // FireBullets SDKHook, so we instead need to check for these
+        // crossbow bolt entities being made.
+        // We need to check if the bolt belongs to a player, and if it
+        // does, fire a ball from that player's face.
+        // However, if we check the bolt's m_hOwnerEntity right away,
+        // it will always be -1!
+        // For whatever dumbass reason, we need to delay checking the
+        // bolt's owner, which is why we RequestFrame here.
+        RequestFrame(TransformBolt, entity);
+    }
+    else if (StrContains(immuneNPCs, classname) != -1)
     {
         SetVariantString("filter_immune");
         AcceptEntityInput(entity, "SetDamageFilter");
@@ -152,6 +142,13 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 public void OnEntityDestroyed(int entity)
 {
+    // "ENOUGH OF YOUR BULLSHIT"
+    // - Alyx Vance 
+    if (!mapLoaded)
+    {
+        return;
+    }
+
     // Apparantly IsValidEntity is full of shit??
     // Do this instead
     if (entity > 0 && entity < MAX_ENTS)
@@ -160,7 +157,54 @@ public void OnEntityDestroyed(int entity)
         // has absorbed needs to be reset, so that if another prop takes
         // this index later, it doesn't start with balls already absorbed.
         ballsAbsorbed[entity] = 0;
+
+        char classname[64];
+        GetEntityClassname(entity, classname, 64);
+
+
+        if (StrEqual(classname, "npc_grenade_frag"))
+        {
+            float origin[3];
+            GetEntPropVector(entity, Prop_Send, "m_vecOrigin", origin);
+
+            // Bump the origin up, since otherwise it's a little in the floor
+            origin[2] += 32.0;
+
+            for (int i = 0; i < GetRandomInt(4, 5); i++)
+            {
+                int prop = CreateEntityByName("prop_physics");
+                DispatchKeyValue(prop, "model", airdropProps[GetRandomInt(0, NUM_AIRDROP_PROPS - 1)]);
+                DispatchSpawn(prop);
+
+                float angles[3];
+                float push[3];
+                GetRandomAngleVector(angles);
+                GetAngleVectors(angles, push, NULL_VECTOR, NULL_VECTOR);
+                ScaleVector(push, 300.0);
+
+                TeleportEntity(prop, origin, NULL_VECTOR, push);
+
+                // To fix prop trampoline bug
+                SetEntPropVector(prop, Prop_Data, "m_vecAbsVelocity", Float:{0.0, 0.0, 0.0});
+            }
+        }
+        else if (StrEqual(classname, "rpg_missile"))
+        {
+            float origin[3];
+            GetEntPropVector(entity, Prop_Send, "m_vecOrigin", origin);
+
+            origin[2] += 32.0;
+
+            for (int i = 0; i < GetRandomInt(6, 10); i++)
+            {
+                float angles[3];
+                GetRandomAngleVector(angles);
+                
+                LaunchBall(origin, angles, 1200.0, 2.0, 5.0);
+            }
+        }
     }
+
 }
 
 Action OnBallTouch(int entity, int other)
@@ -175,17 +219,23 @@ Action OnBallTouch(int entity, int other)
         ballsAbsorbed[other]++;
         int absorbed = ballsAbsorbed[other];
 
-        // CloseHandle stops a timer.
-        if (shakeTimers[other] != INVALID_HANDLE) 
+        // Determine the intensity of absorbtion sound to play.
+        if (absorbed <= MAX_ABSORBTION / 3.0)
         {
-            KillTimer(shakeTimers[other]);
+            EmitSoundToAll(absorbLight, other);
+        }
+        else if (absorbed <= 2.0 * MAX_ABSORBTION / 3.0)
+        {
+            EmitSoundToAll(absorbWarning, other);
+        }
+        else
+        {
+            EmitSoundToAll(absorbCritical, other);
         }
 
-        // The shake timer's interval is -2^(x - 7) - 0.3x + 5, where x is
-        // the amount of balls absorbed.
-        // This creates a nice-ish exponential relationship between shaking
+        // This creates a nice-ish inverse relationship between shaking
         // speed and the amount of balls absorbed.
-        float interval = -Pow(2.0, absorbed - 7.0) - 0.3 * absorbed + 5;
+        float interval = 5.4 / absorbed + 0.5 - 0.6;
         shakeTimers[other] = CreateTimer(interval, ShakeProp, other, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
         if (ballsAbsorbed[other] >= MAX_ABSORBTION)
@@ -220,7 +270,7 @@ Action ShakeProp(Handle timer, int entity)
 
     GetRandomAngleVector(angles);
     GetAngleVectors(angles, push, NULL_VECTOR, NULL_VECTOR);
-    ScaleVector(push, 60.0);
+    ScaleVector(push, ballsAbsorbed[entity] * 30.0);
 
     TeleportEntity(entity, NULL_VECTOR, NULL_VECTOR, push);
 
@@ -322,10 +372,14 @@ public void OnPlayerShoot(int client, int shots, const char[] weaponname)
             LaunchBall(newOrigin, angles, 140.0, 1.0);
         }
     }
+    else if (StrEqual(weaponname, "weapon_crossbow"))
+    {
+        LaunchBall(newOrigin, angles, 2000.0, 1.0);
+    }
 }
 
-// Uses the global launcher to fire a ball.
-void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces)
+// Handle everything necessary for launching a combine ball.
+void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces, float radius=20.0)
 {
     if (GetEntityCount() > GetMaxEntities() - 200)
     {
@@ -333,18 +387,24 @@ void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces)
         return;
     }
 
-    char cls[64];
-    GetEntityClassname(launcher, cls, 64);
+    int launcher = CreateEntityByName("point_combine_ball_launcher");
+    DispatchSpawn(launcher);
+    DispatchKeyValueFloat(launcher, "launchconenoise", 0.0);
+    DispatchKeyValueFloat(launcher, "ballradius", radius);
+    DispatchKeyValueFloat(launcher, "ballcount", 1.0);
 
-    PrintToServer("Launcher's classname is %s", cls);
+    // This spawnflag makes launched balls collide with players.
+    SetEntProp(launcher, Prop_Data, "m_spawnflags", 2);
 
-    PrintToServer("Spawn ball at {%f, %f, %f}", origin[0], origin[1], origin[2]);
     DispatchKeyValueFloat(launcher, "minspeed", speed);
     DispatchKeyValueFloat(launcher, "maxspeed", speed);
     DispatchKeyValueFloat(launcher, "maxballbounces", bounces);
 
     TeleportEntity(launcher, origin, angles, NULL_VECTOR);
     AcceptEntityInput(launcher, "LaunchBall");
+    
+    // We don't need the launcher to stick around. Remove it.
+    AcceptEntityInput(launcher, "Kill");
 }
 
 // Utility function.
@@ -396,6 +456,44 @@ Action RehookAll(int client, int args)
     return Plugin_Continue;
 }
 
+Action MakeEntsImmune(int client, int args)
+{
+    for (int i = 0; i < GetMaxEntities(); i++)
+    {
+        if (IsValidEntity(i))
+        {
+            char classname[64];
+            GetEntityClassname(i, classname, 64);
+
+            if (StrContains(immuneNPCs, classname) != -1)
+            {
+                PrintToChatAll("%s (%d) became immune.", classname, i);
+                SetVariantString("filter_immune");
+                AcceptEntityInput(i, "SetDamageFilter");
+            }
+        }
+    }
+
+    return Plugin_Continue;
+}
+
+// This function is here since checking the owner of a crossbow
+// bolt does not work immediately
+void TransformBolt(int bolt)
+{
+    int owner = GetEntPropEnt(bolt, Prop_Data, "m_hOwnerEntity");
+    char classname[64];
+    GetEntityClassname(owner, classname, 64);
+    if (StrEqual(classname, "player"))
+    {
+        AcceptEntityInput(bolt, "Kill");
+
+        // Manually call OnPlayerShoot, since it has all the ball-launching
+        // code that we want.
+        OnPlayerShoot(owner, 1, "weapon_crossbow");
+    }
+}
+
 // Utility function.
 // Makes a completely random angle vector and assigns it
 // to the given buffer, overwriting its contents.
@@ -407,7 +505,7 @@ void GetRandomAngleVector(float[3] buffer)
 }
 
 // Utility function.
-// Sets global variables handling a request to d
+// Sets global variables handling a request to detonate a ball.
 void RequestDetonator(float time)
 {
     requestingDetonator = true;
