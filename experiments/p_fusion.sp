@@ -91,6 +91,11 @@ public void OnMapEnd()
         {
             CloseHandle(shakeTimers[i]);
         }
+
+        if (i < MAXPLAYERS + 1 && IsValidEntity(launchers[i]))
+        {
+            AcceptEntityInput(launchers[i], "Kill");
+        }
     }
 
     mapLoaded = false;
@@ -292,45 +297,41 @@ public void OnPlayerShoot(int client, int shots, const char[] weaponname)
     // Balls from the pistol expire quickly and travel slowly.
     if (StrEqual(weaponname, "weapon_pistol"))
     {
-        LaunchBall(launchers[client], origin, angles, 80.0, 1.0);
+        LaunchBall(launchers[client], newOrigin, angles, 80.0, 1.0);
     }
     else if (StrEqual(weaponname, "weapon_357"))
     {
-        LaunchBall(launchers[client], origin, angles, 500.0, 4.0);
+        LaunchBall(launchers[client], newOrigin, angles, 500.0, 4.0);
     }
     else if (StrEqual(weaponname, "weapon_smg1"))
     {
-        LaunchBall(launchers[client], origin, angles, 120.0, 1.0);
+        LaunchBall(launchers[client], newOrigin, angles, 120.0, 1.0);
     }
     else if (StrEqual(weaponname, "weapon_ar2"))
     {
-        LaunchBall(launchers[client], origin, angles, 200.0, INFINITE_BOUNCES);
+        LaunchBall(launchers[client], newOrigin, angles, 200.0, INFINITE_BOUNCES);
     }
     else if (StrEqual(weaponname, "weapon_shotgun"))
     {
         for (int i = 0; i < shots; i++) 
         {
-            LaunchBall(launchers[client], origin, angles, 100.0, 1.0);
+            LaunchBall(launchers[client], newOrigin, angles, 100.0, 1.0);
         }
     }
 }
 
-Action DetonateBall(Handle timer, int ball)
-{
-    if (!IsValidEntity(ball))
-    {
-        return Plugin_Stop;
-    }
-
-    AcceptEntityInput(ball, "Explode");
-    return Plugin_Continue;
-}
 
 // Utility function.
 // Give it a launcher and some parameters, and it will set everything
 // up to make the desired launch happen.
 void LaunchBall(int launcher, float[3] origin, float[3] angles, float speed, float bounces)
 {
+    if (GetEntityCount() > GetMaxEntities() - 200)
+    {
+        PrintToChatAll("[FUSION] Balls disabled : too close to entity limit (within 200)");
+        return;
+    }
+
     char cls[64];
     GetEntityClassname(launcher, cls, 64);
 
