@@ -19,10 +19,10 @@ public Plugin myinfo =
 
 char      immuneNPCs[1024] = "npc_mossman npc_vortigaunt npc_monk npc_barney npc_alyx";
 int       ballsAbsorbed[MAX_ENTS];
-int       launchers[MAXPLAYERS + 1];    // Every player gets a launcher.
-                                        // There is also a generic one.
-int       lastBallSpawned;
+int       launcher;    // the global launcher used for making all combine balls.
 bool      mapLoaded;
+bool      requestingDetonator;
+float     detonatorInterval;
 Handle    shakeTimers[MAX_ENTS];
 Handle    immunityCycle;
 
@@ -52,28 +52,27 @@ public void OnMapStart()
     // Timers REALLY need to be closed when the map is not loaded.
     immunityCycle = CreateTimer(1.0, MakeEntsImmune, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
-    // The world gets its own launcher at index 0.
-    PrepareLauncher(0);
+    launcher = PrepareLauncher();
 
     mapLoaded = true;
 }
 
-void PrepareLauncher(int index)
+int PrepareLauncher()
 {
-    int launcher = CreateEntityByName("point_combine_ball_launcher");
-    DispatchSpawn(launcher);
-    DispatchKeyValueFloat(launcher, "launchconenoise", 0.0);
-    DispatchKeyValueFloat(launcher, "ballradius", 20.0);
-    DispatchKeyValueFloat(launcher, "ballcount", 1.0);
+    int newLauncher = CreateEntityByName("point_combine_ball_launcher");
+    DispatchSpawn(newLauncher);
+    DispatchKeyValueFloat(newLauncher, "launchconenoise", 0.0);
+    DispatchKeyValueFloat(newLauncher, "ballradius", 20.0);
+    DispatchKeyValueFloat(newLauncher, "ballcount", 1.0);
 
     // The ball respawn time is set to a ludicrous value
     // so it doesn't fire again without our orders.
-    DispatchKeyValueFloat(launcher, "ballrespawntime", 999999.0);
+    DispatchKeyValueFloat(newLauncher, "ballrespawntime", 999999.0);
 
     // This spawnflag makes launched balls collide with players.
-    SetEntProp(launcher, Prop_Data, "m_spawnflags", 2);
+    SetEntProp(newLauncher, Prop_Data, "m_spawnflags", 2);
 
-    launchers[index] = launcher;
+    return newLauncher;
 }
 
 public void OnMapEnd() 
@@ -91,12 +90,11 @@ public void OnMapEnd()
         {
             CloseHandle(shakeTimers[i]);
         }
-
-        if (i < MAXPLAYERS + 1 && IsValidEntity(launchers[i]))
-        {
-            AcceptEntityInput(launchers[i], "Kill");
-        }
     }
+
+    // We probably don't want the launcher entity to hang around
+    // between maps, so we kill it at the end of a map.
+    AcceptEntityInput(launcher, "Kill");
 
     mapLoaded = false;
 }
@@ -128,12 +126,22 @@ public void OnEntityCreated(int entity, const char[] classname)
     {
         SDKUnhook(entity, SDKHook_FireBulletsPost, OnPlayerShoot);
         SDKHook(entity, SDKHook_FireBulletsPost, OnPlayerShoot);
-        PrepareLauncher(entity);
     }
     else if (StrEqual(classname, "prop_combine_ball"))
     {
         SDKHook(entity, SDKHook_StartTouch, OnBallTouch);
-        lastBallSpawned = entity;
+
+        // This requestingDetonator variable is set by the RequestDetonator()
+        // function, which is called whenever we want the next ball that is
+        // spawned to detonate after a certain period of time.
+        if (requestingDetonator)
+        {
+            // It's possible for the ball to have already detonated
+            // and the ball's index repurposed before this timer goes off.
+            // This is why we use an entity reference.
+            CreateTimer(detonatorInterval, DetonateBall, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+            requestingDetonator = false;
+        }
     }
     else if (StrEqual(classname, "npc_barney"))
     {
@@ -152,12 +160,6 @@ public void OnEntityDestroyed(int entity)
         // has absorbed needs to be reset, so that if another prop takes
         // this index later, it doesn't start with balls already absorbed.
         ballsAbsorbed[entity] = 0;
-
-        // It's also probably a good idea to stop associated shake timers.
-        if (shakeTimers[entity] != INVALID_HANDLE)
-        {
-            KillTimer(shakeTimers[entity]);
-        }
     }
 }
 
@@ -171,6 +173,7 @@ Action OnBallTouch(int entity, int other)
     {
         AcceptEntityInput(entity, "Explode");
         ballsAbsorbed[other]++;
+        int absorbed = ballsAbsorbed[other];
 
         // CloseHandle stops a timer.
         if (shakeTimers[other] != INVALID_HANDLE) 
@@ -178,10 +181,12 @@ Action OnBallTouch(int entity, int other)
             KillTimer(shakeTimers[other]);
         }
 
-        // The shake timer's interval is an inverse relationship with 
-        // the amount of balls absorbed, since that makes a prop with 
-        // more balls absorbed shake faster.
-        shakeTimers[other] = CreateTimer(2.0 / ballsAbsorbed[other], ShakeProp, other, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+        // The shake timer's interval is -2^(x - 7) - 0.3x + 5, where x is
+        // the amount of balls absorbed.
+        // This creates a nice-ish exponential relationship between shaking
+        // speed and the amount of balls absorbed.
+        float interval = -Pow(2.0, absorbed - 7.0) - 0.3 * absorbed + 5;
+        shakeTimers[other] = CreateTimer(interval, ShakeProp, other, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
         if (ballsAbsorbed[other] >= MAX_ABSORBTION)
         {
@@ -193,7 +198,7 @@ Action OnBallTouch(int entity, int other)
             for (int i = 0; i < MAX_ABSORBTION * 2; i++)
             {
                 GetRandomAngleVector(angles);
-                LaunchBall(launchers[0], origin, angles, 1000.0, 999.0);
+                LaunchBall(origin, angles, 1000.0, 999.0);
             }
         }
     }
@@ -205,7 +210,7 @@ Action OnBallTouch(int entity, int other)
 // in that direction.
 Action ShakeProp(Handle timer, int entity)
 {
-    if (!mapLoaded)
+    if (!mapLoaded || ballsAbsorbed[entity] == 0)
     {
         return Plugin_Stop;
     }
@@ -253,7 +258,7 @@ public void OnEntityKilled(Event event, const char[] name, bool dontBroadcast)
                 newVelocity[2] = velocity[2];
 
                 JitterVector(newVelocity, 100.0);
-                LaunchBall(launchers[0], origin, newVelocity, GetVectorLength(velocity) + 100.0, 999.0);
+                LaunchBall(origin, newVelocity, GetVectorLength(velocity) + 100.0, 999.0);
             }
         }
     }
@@ -290,41 +295,37 @@ public void OnPlayerShoot(int client, int shots, const char[] weaponname)
         TR_GetEndPosition(newOrigin, INVALID_HANDLE);
     }
 
-    // By launching a ball for every shot, weapons that fire
-    // multiple bullets (e.g. the shotgun) will make more than 
-    // one combine ball.
-    
     // Balls from the pistol expire quickly and travel slowly.
     if (StrEqual(weaponname, "weapon_pistol"))
     {
-        LaunchBall(launchers[client], newOrigin, angles, 80.0, 1.0);
+        RequestDetonator(3.0);
+        LaunchBall(newOrigin, angles, 80.0, 1.0);
     }
     else if (StrEqual(weaponname, "weapon_357"))
     {
-        LaunchBall(launchers[client], newOrigin, angles, 500.0, 4.0);
+        LaunchBall(newOrigin, angles, 500.0, 4.0);
     }
     else if (StrEqual(weaponname, "weapon_smg1"))
     {
-        LaunchBall(launchers[client], newOrigin, angles, 120.0, 1.0);
+        RequestDetonator(2.0);
+        LaunchBall(newOrigin, angles, 120.0, 1.0);
     }
     else if (StrEqual(weaponname, "weapon_ar2"))
     {
-        LaunchBall(launchers[client], newOrigin, angles, 200.0, INFINITE_BOUNCES);
+        LaunchBall(newOrigin, angles, 200.0, INFINITE_BOUNCES);
     }
     else if (StrEqual(weaponname, "weapon_shotgun"))
     {
         for (int i = 0; i < shots; i++) 
         {
-            LaunchBall(launchers[client], newOrigin, angles, 100.0, 1.0);
+            RequestDetonator(1.0);
+            LaunchBall(newOrigin, angles, 140.0, 1.0);
         }
     }
 }
 
-
-// Utility function.
-// Give it a launcher and some parameters, and it will set everything
-// up to make the desired launch happen.
-void LaunchBall(int launcher, float[3] origin, float[3] angles, float speed, float bounces)
+// Uses the global launcher to fire a ball.
+void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces)
 {
     if (GetEntityCount() > GetMaxEntities() - 200)
     {
@@ -353,6 +354,21 @@ void JitterVector(float[3] vector, float intensity)
     vector[0] += GetRandomFloat(-intensity, intensity);
     vector[1] += GetRandomFloat(-intensity, intensity);
     vector[2] += GetRandomFloat(-intensity, intensity);
+}
+
+// Given the REFERENCE to a ball, detonates the ball.
+// Meant to be called by a timer.
+Action DetonateBall(Handle timer, int ballRef)
+{
+    int ball = EntRefToEntIndex(ballRef);
+    if (!IsValidEntity(ball))
+    {
+        return Plugin_Stop;
+    }
+    
+    AcceptEntityInput(ball, "Explode");
+
+    return Plugin_Continue;
 }
 
 // Registered to console command: fusion_rehook
@@ -388,4 +404,12 @@ void GetRandomAngleVector(float[3] buffer)
     buffer[0] = GetRandomFloat(-180.0, 180.0);
     buffer[1] = GetRandomFloat(-180.0, 180.0);
     buffer[2] = GetRandomFloat(-180.0, 180.0);
+}
+
+// Utility function.
+// Sets global variables handling a request to d
+void RequestDetonator(float time)
+{
+    requestingDetonator = true;
+    detonatorInterval = time;
 }
