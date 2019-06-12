@@ -11,7 +11,7 @@
 
 public Plugin myinfo =
 {
-    name = "Artifact of Fusion",
+    name = "Artifact of FISSION",
     author = "Breadcrumbs",
     description = "Split enemies for massive power",
     version = "0.1",
@@ -47,8 +47,8 @@ char      absorbCritical[128] = "physics/metal/metal_sheet_impact_bullet1.wav";
 public void OnPluginStart()
 {
     HookEvent("entity_killed", OnEntityKilled);
-    RegConsoleCmd("fusion_rehook", RehookAll);
-    RegConsoleCmd("fusion_reshield_vital_allies", MakeEntsImmune);
+    RegConsoleCmd("FISSION_rehook", RehookAll);
+    RegConsoleCmd("FISSION_reshield_vital_allies", MakeEntsImmune);
 }
 
 // Yes, this is my method of making players' weapons do no
@@ -106,6 +106,11 @@ public void OnEntityCreated(int entity, const char[] classname)
     }
     else if (StrEqual(classname, "prop_combine_ball"))
     {
+        if (GetEntProp(entity, Prop_Data, "m_bWeaponLaunched"))
+        {
+            PrintToChatAll("[FISSION] A ball was launched from a weapon.");
+        }
+
         SDKHook(entity, SDKHook_StartTouch, OnBallTouch);
 
         // This requestingDetonator variable is set by the RequestDetonator()
@@ -383,7 +388,7 @@ void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces, fl
 {
     if (GetEntityCount() > GetMaxEntities() - 200)
     {
-        PrintToChatAll("[FUSION] Balls disabled : too close to entity limit (within 200)");
+        PrintToChatAll("[FISSION] Balls disabled : too close to entity limit (within 200)");
         return;
     }
 
@@ -431,7 +436,7 @@ Action DetonateBall(Handle timer, int ballRef)
     return Plugin_Continue;
 }
 
-// Registered to console command: fusion_rehook
+// Registered to console command: FISSION_rehook
 Action RehookAll(int client, int args)
 {
     for (int i = 1; i <= MAXPLAYERS; i++)
