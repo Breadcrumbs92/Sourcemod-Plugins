@@ -11,7 +11,7 @@
 
 public Plugin myinfo =
 {
-    name = "Artifact of FISSION",
+    name = "Artifact of fission",
     author = "Breadcrumbs",
     description = "Split enemies for massive power",
     version = "0.1",
@@ -47,8 +47,8 @@ char      absorbCritical[128] = "physics/metal/metal_sheet_impact_bullet1.wav";
 public void OnPluginStart()
 {
     HookEvent("entity_killed", OnEntityKilled);
-    RegConsoleCmd("FISSION_rehook", RehookAll);
-    RegConsoleCmd("FISSION_reshield_vital_allies", MakeEntsImmune);
+    RegConsoleCmd("fission_rehook", RehookAll);
+    RegConsoleCmd("fission_reshield_vital_allies", MakeEntsImmune);
 }
 
 // Yes, this is my method of making players' weapons do no
@@ -388,7 +388,7 @@ void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces, fl
 {
     if (GetEntityCount() > GetMaxEntities() - 200)
     {
-        PrintToChatAll("[FISSION] Balls disabled : too close to entity limit (within 200)");
+        PrintToChatAll("[fission] Balls disabled : too close to entity limit (within 200)");
         return;
     }
 
@@ -436,7 +436,7 @@ Action DetonateBall(Handle timer, int ballRef)
     return Plugin_Continue;
 }
 
-// Registered to console command: FISSION_rehook
+// Registered to console command: fission_rehook
 Action RehookAll(int client, int args)
 {
     for (int i = 1; i <= MAXPLAYERS; i++)
