@@ -4,7 +4,7 @@
 #pragma semicolon 1
 
 #define MAX_ENTS 2048            // max entities on the server is assumed 2048.
-#define MAX_ABSORBTION 8         // how many balls any prop is allowed to
+#define MAX_ABSORBTION 10        // how many balls any prop is allowed to
                                  // absorb before it explodes.
 #define INFINITE_BOUNCES 8192.0  // well... close enough.
 #define NUM_AIRDROP_PROPS 10
@@ -14,7 +14,7 @@ public Plugin myinfo =
     name = "Artifact of fission",
     author = "Breadcrumbs",
     description = "Split enemies for massive power",
-    version = "0.1",
+    version = "1.0",
     url = "http://www.sourcemod.net/"
 }
 
@@ -106,10 +106,7 @@ public void OnEntityCreated(int entity, const char[] classname)
     }
     else if (StrEqual(classname, "prop_combine_ball"))
     {
-        if (GetEntProp(entity, Prop_Data, "m_bWeaponLaunched"))
-        {
-            PrintToChatAll("[FISSION] A ball was launched from a weapon.");
-        }
+        RequestFrame(CheckBall, entity);
 
         SDKHook(entity, SDKHook_StartTouch, OnBallTouch);
 
@@ -145,6 +142,32 @@ public void OnEntityCreated(int entity, const char[] classname)
     }
 }
 
+void CheckBall(int ball)
+{
+    if (GetEntProp(ball, Prop_Data, "m_bWeaponLaunched"))
+    {
+        int owner = GetEntPropEnt(ball, Prop_Data, "m_hOwnerEntity");
+        char classname[64];
+        GetEntityClassname(owner, classname, 64);
+
+        if (StrEqual(classname, "player"))
+        {
+            // lol
+            ClientCommand(owner, "explode");
+            for (int i = 0; i < GetRandomInt(40, 50); i++)
+            {
+                float origin[3];
+                float angles[3];
+
+                GetRandomAngleVector(angles);
+                GetClientEyePosition(owner, origin);
+
+                LaunchBall(origin, angles, 2000.0, INFINITE_BOUNCES);
+            }
+        }
+    }
+}
+
 public void OnEntityDestroyed(int entity)
 {
     // "ENOUGH OF YOUR BULLSHIT"
@@ -167,7 +190,7 @@ public void OnEntityDestroyed(int entity)
         GetEntityClassname(entity, classname, 64);
 
 
-        if (StrEqual(classname, "npc_grenade_frag"))
+        if (StrEqual(classname, "npc_grenade_frag") || StrEqual(classname, "grenade_ar2"))
         {
             float origin[3];
             GetEntPropVector(entity, Prop_Send, "m_vecOrigin", origin);
@@ -240,8 +263,8 @@ Action OnBallTouch(int entity, int other)
 
         // This creates a nice-ish inverse relationship between shaking
         // speed and the amount of balls absorbed.
-        float interval = 5.4 / absorbed + 0.5 - 0.6;
-        shakeTimers[other] = CreateTimer(interval, ShakeProp, other, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+        // float interval = 5.4 / absorbed + 0.5 - 0.6;
+        // shakeTimers[other] = CreateTimer(interval, ShakeProp, other, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
         if (ballsAbsorbed[other] >= MAX_ABSORBTION)
         {
@@ -263,6 +286,7 @@ Action OnBallTouch(int entity, int other)
 
 // To shake a prop, we get a random angle and assign velocity
 // in that direction.
+/*
 Action ShakeProp(Handle timer, int entity)
 {
     if (!mapLoaded || ballsAbsorbed[entity] == 0)
@@ -281,6 +305,7 @@ Action ShakeProp(Handle timer, int entity)
 
     return Plugin_Continue;
 }
+*/
 
 public void OnEntityKilled(Event event, const char[] name, bool dontBroadcast)
 {
@@ -384,17 +409,17 @@ public void OnPlayerShoot(int client, int shots, const char[] weaponname)
 }
 
 // Handle everything necessary for launching a combine ball.
-void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces, float radius=20.0)
+void LaunchBall(float[3] origin, float[3] angles, float speed, float bounces, float radius=20.0, float noise=0.0)
 {
     if (GetEntityCount() > GetMaxEntities() - 200)
     {
-        PrintToChatAll("[fission] Balls disabled : too close to entity limit (within 200)");
+        PrintToChatAll("[FISSION] Balls disabled : too close to entity limit (within 200)");
         return;
     }
 
     int launcher = CreateEntityByName("point_combine_ball_launcher");
     DispatchSpawn(launcher);
-    DispatchKeyValueFloat(launcher, "launchconenoise", 0.0);
+    DispatchKeyValueFloat(launcher, "launchconenoise", noise);
     DispatchKeyValueFloat(launcher, "ballradius", radius);
     DispatchKeyValueFloat(launcher, "ballcount", 1.0);
 

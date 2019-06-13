@@ -1,8 +1,8 @@
 # Sourcemod-Plugins
-Assorted gameplay-modifying sourcemod plugins, intended and built for use in ***Synergy*** only. Running these in other source games may result in unintended behavoir/complete unoperational-ness.
+Assorted gameplay-modifying plugins for Sourcemod. They were developed for and have been tested exclusively in **Synergy**. While they theoretically can work in any Source game, I give zero guarantees outside of Synergy.
 
 # Disclaimer
-None of this trash is coded or commented well. Tread lightly.
+None of this trash is coded or commented well. A lot of these plugins were some of the first things I ever programmed. Tread lightly.
 
 ## Spite (`p_spiteartifact.sp`)
 
@@ -115,7 +115,22 @@ Gunship | Like 50 manhacks
 * `rubber_growth_factor`: The factor by which the push probability increases linearly with time.
 * `rubber_growth_power`: The power to which the push probability is raised.
 
-## Experiments (`p_newguns.sp`, `p_proto_magfield.sp`, `p_saw.sp`)
+## Fission (`p_fission.sp`)
+
+#### The air sparks with instability.
+
+* Almost all weapons fire combine balls instead of bullets (bullets still fire, but they deal 0 damage).
+* Different weapons fire balls with different properties (crossbow = fast, ar2 = never expires, etc.)
+* Whenever an NPC dies to a ball, they split into two faster balls that never expire.
+* Combine balls that touch props are absorbed, removing them from the world.
+* Props can absorb up to 10 balls. If they try to absorb another, they explode in a shower of even more balls.
+* **DO NOT USE THE AR2'S ALT FIRE**.
+
+## Console commands:
+* `fission_rehook`: Re-apply the bullet-firing hooks for players. Use this if you aren't firing balls.
+* `fission_reshield_vital_allies`: Make vital allies (such as Barney, Alyx) invulnerable to all damage. Use this if they keep dying to the maelstrom of combine balls. The plugin attempts to do this automatically at the start of each map, but because of the way Synergy handles map reloading, it rarely works.
+
+## Experiments
 
 These are miscellanous and incomplete plugins that are being used to test future ones. They are subject to removal.
 
