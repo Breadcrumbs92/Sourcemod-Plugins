@@ -117,7 +117,7 @@ Gunship | Like 50 manhacks
 
 ## Fission (`p_fission.sp`)
 
-#### The air sparks with instability.
+#### *The air sparks with instability.*
 
 * Almost all weapons fire combine balls instead of bullets (bullets still fire, but they deal 0 damage).
 * Different weapons fire balls with different properties (crossbow = fast, ar2 = never expires, etc.)
