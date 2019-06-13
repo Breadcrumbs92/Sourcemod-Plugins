@@ -341,6 +341,25 @@ public void OnEntityKilled(Event event, const char[] name, bool dontBroadcast)
                 LaunchBall(origin, newVelocity, GetVectorLength(velocity) + 100.0, 999.0);
             }
         }
+        else if (StrEqual(attackerClassname, "player"))
+        {
+            int weapon = GetEntPropEnt(attacker, Prop_Send, "m_hActiveWeapon");
+
+            char wepClassname[64];
+            GetEntityClassname(weapon, wepClassname, 64);
+
+            if (StrEqual(wepClassname, "weapon_crowbar") || StrEqual(wepClassname, "weapon_stunstick"))
+            {
+                float origin[3];
+                GetEntPropVector(killed, Prop_Send, "m_vecOrigin", origin);
+                origin[2] += 32.0;
+
+                int prop = CreateEntityByName("prop_physics");
+                DispatchKeyValue(prop, "model", "models/props_c17/oildrum001.mdl");
+                DispatchSpawn(prop);
+                TeleportEntity(prop, origin, NULL_VECTOR, NULL_VECTOR);
+            }
+        }
     }
 }
 
