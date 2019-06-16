@@ -223,7 +223,7 @@ public void OnEntityDestroyed(int entity)
 
             origin[2] += 32.0;
 
-            for (int i = 0; i < GetRandomInt(6, 10); i++)
+            for (int i = 0; i < GetRandomInt(40, 60); i++)
             {
                 float angles[3];
                 GetRandomAngleVector(angles);
@@ -232,7 +232,6 @@ public void OnEntityDestroyed(int entity)
             }
         }
     }
-
 }
 
 Action OnBallTouch(int entity, int other)
@@ -406,20 +405,16 @@ public void OnPlayerShoot(int client, int shots, const char[] weaponname)
     }
     else if (StrEqual(weaponname, "weapon_smg1"))
     {
-        RequestDetonator(2.0);
-        LaunchBall(newOrigin, angles, 120.0, 1.0);
+        RequestDetonator(0.8);
+        LaunchBall(newOrigin, angles, 480.0, 1.0, 10.0);
     }
     else if (StrEqual(weaponname, "weapon_ar2"))
     {
-        LaunchBall(newOrigin, angles, 200.0, INFINITE_BOUNCES);
+        LaunchBall(newOrigin, angles, 600.0, INFINITE_BOUNCES);
     }
     else if (StrEqual(weaponname, "weapon_shotgun"))
     {
-        for (int i = 0; i < shots; i++) 
-        {
-            RequestDetonator(1.0);
-            LaunchBall(newOrigin, angles, 140.0, 1.0);
-        }
+        LaunchBall(newOrigin, angles, 20.0, INFINITE_BOUNCES);
     }
     else if (StrEqual(weaponname, "weapon_crossbow"))
     {

@@ -124,6 +124,7 @@ Gunship | Like 50 manhacks
 * Whenever an NPC dies to a ball, they split into two faster balls that never expire.
 * Combine balls that touch props are absorbed, removing them from the world.
 * Props can absorb up to 10 balls. If they try to absorb another, they explode in a shower of even more balls.
+* Killing an NPC with a melee weapon transmutes them into a barrel.
 * **DO NOT USE THE AR2'S ALT FIRE**.
 
 ## Console commands:
