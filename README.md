@@ -125,7 +125,8 @@ Gunship | Like 50 manhacks
 * Combine balls that touch props are absorbed, removing them from the world.
 * Props can absorb up to 10 balls. If they try to absorb another, they explode in a shower of even more balls.
 * Killing an NPC with a melee weapon transmutes them into a barrel.
-* **DO NOT USE THE AR2'S ALT FIRE**.
+* Throwing a bugbait at an NPC or prop will explode it into many incredibly fast bloodthirsty balls.
+* **DO NOT USE THE AR2'S ALT FIRE.**
 
 ## Console commands:
 * `fission_rehook`: Re-apply the bullet-firing hooks for players. Use this if you aren't firing balls.

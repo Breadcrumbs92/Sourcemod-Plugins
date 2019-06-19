@@ -140,6 +140,10 @@ public void OnEntityCreated(int entity, const char[] classname)
         SetVariantString("filter_immune");
         AcceptEntityInput(entity, "SetDamageFilter");
     }
+    else if (StrEqual(classname, "npc_grenade_bugbait"))
+    {
+        SDKHook(entity, SDKHook_StartTouch, OnBugbaitTouch);
+    }
 }
 
 void CheckBall(int ball)
@@ -281,6 +285,36 @@ Action OnBallTouch(int entity, int other)
     }
 
     return Plugin_Continue;
+}
+
+Action OnBugbaitTouch(int entity, int other)
+{
+    // The classname of `entity` is always "npc_grenade_bugbait".
+    char touchedClassname[64];
+    GetEntityClassname(other, touchedClassname, 64);
+
+    // When a bugbait touches a prop or any npc or any item, 
+    // it destroys that thing and replaces it with mad balls.
+    // Note: This has an interesting side effect that the bugbait
+    // might remove essential game logic entities, like npc_maker
+    // or npc_apcdriver. It remains to be seen if this is actually
+    // a problem, though.
+    if (StrEqual(touchedClassname, "prop_physics") ||
+       (StrContains(touchedClassname, "npc_")) != -1 ||
+       (StrContains(touchedClassname, "item_")) != -1)
+    {
+        AcceptEntityInput(other, "Kill");
+
+        float origin[3];
+        GetEntPropVector(other, Prop_Send, "m_vecOrigin", origin);
+
+        float angles[3];
+        for (int i = 0; i < GetRandomInt(20, 40); i++)
+        {
+            GetRandomAngleVector(angles);
+            LaunchBall(origin, angles, 2000.0, 6.0);
+        }
+    }
 }
 
 // To shake a prop, we get a random angle and assign velocity
