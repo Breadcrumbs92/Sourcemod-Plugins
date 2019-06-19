@@ -40,13 +40,16 @@ float     detonatorInterval;
 Handle    shakeTimers[MAX_ENTS];
 Handle    immunityCycle;
 
-bool      absorbingBalls[MAXPLAYERS + 1];
-float     absorbExpireTime[MAXPLAYERS + 1];
-float     absorbRadius[MAXPLAYERS + 1];
+bool      defusing[MAXPLAYERS + 1];
+float     defuseExpireTime[MAXPLAYERS + 1];
+float     defuseRadius[MAXPLAYERS + 1];
 
 char      absorbLight[128] = "physics/metal/metal_sheet_impact_hard2.wav";
 char      absorbWarning[128]   = "physics/metal/metal_sheet_impact_bullet2.wav";
 char      absorbCritical[128] = "physics/metal/metal_sheet_impact_bullet1.wav";
+
+char      defuseQuestionSound[128] = "npc/roller/mine/rmine_chirp_quest1.wav";
+char      defuseAnswerSound[128] = "npc/roller/code2.wav";
 
 public void OnPluginStart()
 {
@@ -74,9 +77,14 @@ public void OnMapStart()
     PrecacheSound(absorbLight, true);
     PrecacheSound(absorbWarning, true);
     PrecacheSound(absorbCritical, true);
+    PrecacheSound(defuseQuestionSound, true);
+    PrecacheSound(defuseAnswerSound, true);
+
     PrefetchSound(absorbLight);
     PrefetchSound(absorbWarning);
     PrefetchSound(absorbCritical);
+    PrefetchSound(defuseQuestionSound);
+    PrefetchSound(defuseAnswerSound);
 
     mapLoaded = true;
 }
@@ -160,7 +168,7 @@ void CheckBall(int ball)
 
         if (StrEqual(classname, "player"))
         {
-            RequestAbsorbEffect(owner, 10.0, 40000.0);
+            RequestDefuseEffect(owner, 10.0, 40000.0);
         }
     }
 }
@@ -169,19 +177,20 @@ public void OnGameFrame()
 {
     for (int player = 0; player < MAXPLAYERS + 1; player++) 
     {
-        if (IsValidEntity(player) && absorbingBalls[player])
+        if (IsValidEntity(player) && defusing[player])
         {
+            // How much time is left until this defuse effect expires.
+            float timeLeft = defuseExpireTime[player] - GetGameTime();
+            PrintCenterText(player, "[%f]", timeLeft);
+
             // check if we need to disable the effect
-            if (absorbExpireTime[player] <= GetGameTime())
+            if (timeLeft <= 0.0)
             {
-                absorbingBalls[player] = false;
-                absorbRadius[player] = 0.0;
-                absorbExpireTime[player] = 0.0;
+                defusing[player] = false;
+                defuseRadius[player] = 0.0;
+                defuseExpireTime[player] = 0.0;
                 return;
             }
-
-            // display the remaining effect time to the player
-            PrintCenterText(player, "[%f]", absorbExpireTime[player] - GetGameTime());
 
             float origin[3];
             GetEntPropVector(player, Prop_Send, "m_vecOrigin", origin);
@@ -206,7 +215,7 @@ public void OnGameFrame()
                         float distance = GetVectorDistance(origin, ballOrigin, true);
                         //PrintToServer("ball at %d has distance %f from player", ent, distance);
 
-                        if (distance <= absorbRadius[player])
+                        if (distance <= defuseRadius[player])
                         {
                             AcceptEntityInput(ent, "Explode");
                         }
@@ -237,7 +246,6 @@ public void OnEntityDestroyed(int entity)
 
         char classname[64];
         GetEntityClassname(entity, classname, 64);
-
 
         if (StrEqual(classname, "npc_grenade_frag") || StrEqual(classname, "grenade_ar2"))
         {
@@ -636,11 +644,28 @@ void RequestDetonator(float time)
 }
 
 // Utility function.
-// Sets global varaibles handling a ball absorbtion effect
+// Sets global variables handling a ball discharge effect
 // for a player.
-void RequestAbsorbEffect(int client, float duration, float radius)
+void RequestDefuseEffect(int client, float duration, float radius)
 {
-    absorbingBalls[client] = true;
-    absorbExpireTime[client] = GetGameTime() + duration;
-    absorbRadius[client] = radius;
+    defusing[client] = true;
+    defuseExpireTime[client] = GetGameTime() + duration;
+    defuseRadius[client] = radius;
+    CreateTimer(1.0, DefuseNoticeCycle, client, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+Action DefuseNoticeCycle(Handle timer, int player)
+{
+    EmitSoundToAll(defuseQuestionSound, player);
+
+    if ((defuseExpireTime[player] - GetGameTime()) < 0.0)
+    {
+        return Plugin_Stop;
+    }
+    else if ((defuseExpireTime[player] - GetGameTime()) < 4.0)
+    {
+        EmitSoundToAll(defuseAnswerSound, player);
+    }
+
+    return Plugin_Continue;
 }
