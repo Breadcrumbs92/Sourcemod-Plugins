@@ -40,6 +40,10 @@ float     detonatorInterval;
 Handle    shakeTimers[MAX_ENTS];
 Handle    immunityCycle;
 
+bool      absorbingBalls[MAXPLAYERS + 1];
+float     absorbExpireTime[MAXPLAYERS + 1];
+float     absorbRadius[MAXPLAYERS + 1];
+
 char      absorbLight[128] = "physics/metal/metal_sheet_impact_hard2.wav";
 char      absorbWarning[128]   = "physics/metal/metal_sheet_impact_bullet2.wav";
 char      absorbCritical[128] = "physics/metal/metal_sheet_impact_bullet1.wav";
@@ -156,17 +160,58 @@ void CheckBall(int ball)
 
         if (StrEqual(classname, "player"))
         {
-            // lol
-            ClientCommand(owner, "explode");
-            for (int i = 0; i < GetRandomInt(40, 50); i++)
+            RequestAbsorbEffect(owner, 10.0, 40000.0);
+        }
+    }
+}
+
+public void OnGameFrame()
+{
+    for (int player = 0; player < MAXPLAYERS + 1; player++) 
+    {
+        if (IsValidEntity(player) && absorbingBalls[player])
+        {
+            // check if we need to disable the effect
+            if (absorbExpireTime[player] <= GetGameTime())
             {
-                float origin[3];
-                float angles[3];
+                absorbingBalls[player] = false;
+                absorbRadius[player] = 0.0;
+                absorbExpireTime[player] = 0.0;
+                return;
+            }
 
-                GetRandomAngleVector(angles);
-                GetClientEyePosition(owner, origin);
+            // display the remaining effect time to the player
+            PrintCenterText(player, "[%f]", absorbExpireTime[player] - GetGameTime());
 
-                LaunchBall(origin, angles, 2000.0, INFINITE_BOUNCES);
+            float origin[3];
+            GetEntPropVector(player, Prop_Send, "m_vecOrigin", origin);
+
+            // get origin out of feet
+            origin[2] += 36.0;
+            
+            for (int ent = 0; ent < MAX_ENTS; ent++)
+            {
+                if (IsValidEntity(ent))
+                {
+                    char classname[64];
+                    GetEntityClassname(ent, classname, 64);
+
+                    if (StrEqual(classname, "prop_combine_ball"))
+                    {
+                        PrintToServer("found ball %d", ent);
+
+                        float ballOrigin[3];
+                        GetEntPropVector(ent, Prop_Send, "m_vecOrigin", ballOrigin);
+
+                        float distance = GetVectorDistance(origin, ballOrigin, true);
+                        PrintToServer("ball at %d has distance %f from player", ent, distance);
+
+                        if (distance <= absorbRadius[player])
+                        {
+                            AcceptEntityInput(ent, "Explode");
+                        }
+                    }
+                }
             }
         }
     }
@@ -588,4 +633,14 @@ void RequestDetonator(float time)
 {
     requestingDetonator = true;
     detonatorInterval = time;
+}
+
+// Utility function.
+// Sets global varaibles handling a ball absorbtion effect
+// for a player.
+void RequestAbsorbEffect(int client, float duration, float radius)
+{
+    absorbingBalls[client] = true;
+    absorbExpireTime[client] = GetGameTime() + duration;
+    absorbRadius[client] = radius;
 }
