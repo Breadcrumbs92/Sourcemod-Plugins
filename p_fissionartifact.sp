@@ -198,13 +198,13 @@ public void OnGameFrame()
 
                     if (StrEqual(classname, "prop_combine_ball"))
                     {
-                        PrintToServer("found ball %d", ent);
+                        //PrintToServer("found ball %d", ent);
 
                         float ballOrigin[3];
                         GetEntPropVector(ent, Prop_Send, "m_vecOrigin", ballOrigin);
 
                         float distance = GetVectorDistance(origin, ballOrigin, true);
-                        PrintToServer("ball at %d has distance %f from player", ent, distance);
+                        //PrintToServer("ball at %d has distance %f from player", ent, distance);
 
                         if (distance <= absorbRadius[player])
                         {
@@ -443,7 +443,7 @@ public void OnEntityKilled(Event event, const char[] name, bool dontBroadcast)
 
 public void OnPlayerShoot(int client, int shots, const char[] weaponname)
 {
-    PrintToServer("client %d shot", client);
+    //PrintToServer("client %d shot", client);
 
     float angles[3];    // angles of client's eyes
     float origin[3];    // position of client's eyes
