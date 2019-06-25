@@ -113,6 +113,8 @@ public void OnEntityCreated(int entity, const char[] classname)
 {
     if (StrEqual(classname, "player"))
     {
+        // This is here for the exact purpose of clearing 
+        ClearDefuseEffect(entity);
         SDKUnhook(entity, SDKHook_FireBulletsPost, OnPlayerShoot);
         SDKHook(entity, SDKHook_FireBulletsPost, OnPlayerShoot);
     }
@@ -183,8 +185,10 @@ public void OnGameFrame()
             float timeLeft = defuseExpireTime[player] - GetGameTime();
             PrintCenterText(player, "[%f]", timeLeft);
 
-            // check if we need to disable the effect
-            if (timeLeft <= 0.0)
+            // Check if we need to disable the effect.
+            // Dead players shouldn't have a defuse effect, since
+            // their spectating ghost can wander around and ruin things.
+            if (timeLeft <= 0.0 || !IsClientInGame(player) || !IsPlayerAlive(player))
             {
                 defusing[player] = false;
                 defuseRadius[player] = 0.0;
@@ -652,6 +656,13 @@ void RequestDefuseEffect(int client, float duration, float radius)
     defuseExpireTime[client] = GetGameTime() + duration;
     defuseRadius[client] = radius;
     CreateTimer(1.0, DefuseNoticeCycle, client, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void ClearDefuseEffect(int client)
+{
+    defusing[client] = false;
+    defuseRadius[client] = 0.0;
+    defuseExpireTime[client] = 0.0;
 }
 
 Action DefuseNoticeCycle(Handle timer, int player)
